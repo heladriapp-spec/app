@@ -1,5 +1,6 @@
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { hashSenha } from '@/lib/auth/senha'
+import { apagarFora, gravarTabela, lerTabela, supabaseConfigurado } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -132,9 +133,10 @@ export function registrarNo(
 
 export async function alterarStore<T>(fn: (store: Store) => T): Promise<T> {
   const exec = fila.then(async () => {
-    const store = (await lerDisco()) ?? semear()
+    const store = supabaseConfigurado() ? await lerNuvem() : ((await lerDisco()) ?? semear())
     const resultado = fn(store)
-    await gravarDisco(store)
+    if (supabaseConfigurado()) await gravarNuvem(store)
+    else await gravarDisco(store)
     return resultado
   })
   fila = exec.then(
@@ -145,7 +147,155 @@ export async function alterarStore<T>(fn: (store: Store) => T): Promise<T> {
 }
 
 export async function lerStore() {
+  if (supabaseConfigurado()) return lerNuvem()
   const atual = await lerDisco()
   if (atual) return atual
   return alterarStore((store) => store)
+}
+
+type UsuarioRow = {
+  id: string
+  nome: string
+  email: string | null
+  celular: string | null
+  login: string
+  senha_hash: string
+  papel: Papel
+  ativo: boolean
+  origem: Usuario['origem']
+}
+
+type PedidoRow = {
+  id: string
+  nome: string
+  email: string
+  celular: string
+  criado_em: string
+  situacao: SituacaoPedido
+  decidido_em: string | null
+  decidido_por: string | null
+}
+
+type LogRow = {
+  id: string
+  em: string
+  nivel: NivelLog
+  evento: string
+  ator: string | null
+  mensagem: string
+  detalhe: LogRegistro['detalhe']
+}
+
+async function lerNuvem(): Promise<Store> {
+  const [usuarios, pedidos, estados, logs] = await Promise.all([
+    lerTabela<UsuarioRow>('usuarios', 'select=*&order=login.asc'),
+    lerTabela<PedidoRow>('pedidos_acesso', 'select=*&order=criado_em.asc'),
+    lerTabela<EntregaEstadoRow>('entrega_estados', 'select=*'),
+    lerTabela<LogRow>('logs', 'select=*&order=em.desc&limit=400'),
+  ])
+  if (usuarios.length === 0) {
+    const vazio = semear()
+    await gravarNuvem(vazio)
+    return vazio
+  }
+  return {
+    usuarios: usuarios.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      email: item.email,
+      celular: item.celular,
+      login: item.login,
+      senhaHash: item.senha_hash,
+      papel: item.papel,
+      ativo: item.ativo,
+      origem: item.origem,
+    })),
+    pedidos: pedidos.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      email: item.email,
+      celular: item.celular,
+      criadoEm: item.criado_em,
+      situacao: item.situacao,
+      decididoEm: item.decidido_em,
+      decididoPor: item.decidido_por,
+    })),
+    estados,
+    logs: logs.reverse().map((item) => ({
+      id: item.id,
+      em: item.em,
+      nivel: item.nivel,
+      evento: item.evento,
+      ator: item.ator,
+      mensagem: item.mensagem,
+      detalhe: item.detalhe ?? {},
+    })),
+  }
+}
+
+async function gravarNuvem(store: Store) {
+  const temAdmin = store.usuarios.some((item) => item.papel === 'administrador' && item.ativo)
+  if (!temAdmin) {
+    throw new Error('A gravação foi recusada: ficaria sem administrador ativo.')
+  }
+  await gravarTabela(
+    'usuarios',
+    store.usuarios.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      email: item.email,
+      celular: item.celular,
+      login: item.login,
+      senha_hash: item.senhaHash,
+      papel: item.papel,
+      ativo: item.ativo,
+      origem: item.origem,
+    })),
+  )
+  await apagarFora(
+    'usuarios',
+    'id',
+    store.usuarios.map((item) => item.id),
+  )
+  await gravarTabela(
+    'pedidos_acesso',
+    store.pedidos.map((item) => ({
+      id: item.id,
+      nome: item.nome,
+      email: item.email,
+      celular: item.celular,
+      criado_em: item.criadoEm,
+      situacao: item.situacao,
+      decidido_em: item.decididoEm,
+      decidido_por: item.decididoPor,
+    })),
+  )
+  await apagarFora(
+    'pedidos_acesso',
+    'id',
+    store.pedidos.map((item) => item.id),
+  )
+  await gravarTabela('entrega_estados', store.estados)
+  await apagarFora(
+    'entrega_estados',
+    'entrega_id',
+    store.estados.map((item) => item.entrega_id),
+  )
+  await gravarTabela(
+    'logs',
+    store.logs.map((item) => ({
+      id: item.id,
+      em: item.em,
+      nivel: item.nivel,
+      evento: item.evento,
+      ator: item.ator,
+      mensagem: item.mensagem,
+      detalhe: item.detalhe,
+    })),
+  )
+  await apagarFora(
+    'logs',
+    'id',
+    store.logs.map((item) => item.id),
+  )
 }

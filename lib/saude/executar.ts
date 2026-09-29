@@ -1,11 +1,6 @@
 import { CATALOGO_ENTREGAS } from '@/lib/entregas/catalogo'
-import type {
-  CheckResultado,
-  RelatorioSaude,
-  ResumoEixo,
-  StatusCheck,
-  StatusSaude,
-} from '@/lib/saude/tipos'
+import type { CheckResultado, RelatorioSaude, ResumoEixo, StatusSaude } from '@/lib/saude/tipos'
+import { pingUsuarios, supabaseConfigurado } from '@/lib/supabase/nuvem'
 import { VERSAO_APP, VERSAO_SEMVER, ambienteAtual, shaDoBuild } from '@/lib/versao'
 import { access, readFile, readdir } from 'node:fs/promises'
 import os from 'node:os'
@@ -128,6 +123,20 @@ async function checkProcesso(): Promise<CheckResultado> {
 
 async function checkArquivoLocal(): Promise<CheckResultado> {
   const inicio = Date.now()
+  if (supabaseConfigurado()) {
+    return medir(
+      {
+        id: 'arquivo-local',
+        nome: 'Arquivo local de operação',
+        grupo: 'ambiente',
+        status: 'ok',
+        criticidade: 'nao_critico',
+        mensagem: 'Usuários, pedidos e projetos deste ambiente ficam no Supabase. A pasta data não é a fonte.',
+        detalhe: null,
+      },
+      inicio,
+    )
+  }
   const pasta = path.join(process.cwd(), 'data')
   try {
     await access(pasta)
@@ -193,23 +202,49 @@ async function checkGit(): Promise<CheckResultado> {
 
 async function checkSupabase(): Promise<CheckResultado> {
   const inicio = Date.now()
-  const presentes = VARIAVEIS.filter((nome) => Boolean(process.env[nome]?.trim()))
-  const status: StatusCheck = presentes.length === VARIAVEIS.length ? 'ok' : 'alerta'
-  return medir(
-    {
-      id: 'supabase-contrato',
-      nome: 'Contrato do Supabase',
-      grupo: 'ambiente',
-      status,
-      criticidade: 'nao_critico',
-      mensagem:
-        status === 'ok'
-          ? 'URL e chave secreta estão definidas no ambiente. Os valores não aparecem aqui.'
-          : `Ainda sem ${VARIAVEIS.filter((nome) => !process.env[nome]?.trim()).join(' e ')}. Esperado até a entrega do Supabase.`,
-      detalhe: null,
-    },
-    inicio,
-  )
+  const ausentes = VARIAVEIS.filter((nome) => !process.env[nome]?.trim())
+  if (ausentes.length > 0) {
+    return medir(
+      {
+        id: 'supabase-contrato',
+        nome: 'Contrato do Supabase',
+        grupo: 'ambiente',
+        status: 'alerta',
+        criticidade: 'nao_critico',
+        mensagem: `Ainda sem ${ausentes.join(' e ')}. Sem elas a operação continua no arquivo local.`,
+        detalhe: null,
+      },
+      inicio,
+    )
+  }
+  try {
+    await pingUsuarios()
+    return medir(
+      {
+        id: 'supabase-contrato',
+        nome: 'Contrato do Supabase',
+        grupo: 'ambiente',
+        status: 'ok',
+        criticidade: 'nao_critico',
+        mensagem: 'O servidor leu a tabela de usuários no Supabase. A chave não aparece aqui.',
+        detalhe: null,
+      },
+      inicio,
+    )
+  } catch {
+    return medir(
+      {
+        id: 'supabase-contrato',
+        nome: 'Contrato do Supabase',
+        grupo: 'ambiente',
+        status: 'erro',
+        criticidade: 'critico',
+        mensagem: 'O servidor não conseguiu ler o Supabase. A chave não aparece aqui.',
+        detalhe: null,
+      },
+      inicio,
+    )
+  }
 }
 
 async function checkMemoria(): Promise<CheckResultado> {
