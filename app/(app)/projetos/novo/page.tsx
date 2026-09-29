@@ -1,0 +1,63 @@
+import { criarProjeto } from '@/app/actions/projetos'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { requireAdmin } from '@/lib/auth/guard'
+import { dataHojeISO } from '@/lib/planilha/numeros'
+import Link from 'next/link'
+
+export default async function NovoProjetoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string }>
+}) {
+  await requireAdmin()
+  const { erro } = await searchParams
+
+  return (
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+      <div>
+        <h1 className="text-xl font-semibold">Criar novo projeto</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Nome e data identificam o trabalho. A planilha do SESC pode entrar agora ou depois. Com o
+          arquivo, abre a tela de preenchimento. O memorial descritivo é outro documento e não entra
+          neste formulário.
+        </p>
+      </div>
+      {erro ? (
+        <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">
+          {erro}
+        </p>
+      ) : null}
+      <form action={criarProjeto} className="grid gap-4">
+        <div className="grid gap-1.5">
+          <Label htmlFor="nome">Nome</Label>
+          <Input id="nome" name="nome" required maxLength={120} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="data">Data</Label>
+          <Input id="data" name="data" type="date" required defaultValue={dataHojeISO()} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="arquivo">Planilha do SESC</Label>
+          <Input
+            id="arquivo"
+            name="arquivo"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          />
+          <p className="text-xs text-muted-foreground">Opcional. Arquivo .xlsx daquele trabalho.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button type="submit">Criar projeto</Button>
+          <Link
+            href="/"
+            className="inline-flex h-8 items-center rounded-lg border px-2.5 text-sm font-medium"
+          >
+            Cancelar
+          </Link>
+        </div>
+      </form>
+    </div>
+  )
+}

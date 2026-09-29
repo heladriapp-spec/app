@@ -1,0 +1,20 @@
+---
+description: Commit em uma linha, já classificado como nova entrega, correção ou atualização
+alwaysApply: true
+---
+
+# Commit neste repositório
+
+Quando a pessoa for commitar ou sincronizar, entregue **uma linha só**, em português, até ~72 caracteres. Sem corpo, sem lista de arquivos. Só rode `git commit` se ela pedir.
+
+O prefixo sai do diff, e diz o que a mudança é:
+
+| O que mudou | Começa com |
+|---|---|
+| Funcionalidade que ainda não existia, ou item novo do catálogo | `Nova entrega:` |
+| Correção de comportamento, quebra ou bug | `Correção:` |
+| Melhoria do que já existe (versão, esteira, visual, ajuste) | `Atualização:` |
+
+Se `lib/versao.ts`, `package.json` ou `lib/entregas/catalogo.ts` mudarem juntos, a linha cita a versão (`Nova entrega: operação da aplicação 0.1.0`).
+
+Fechar uma entrega do catálogo, na mesma alteração, atualiza os três: versão em `lib/versao.ts`, `package.json` e o item do catálogo (`implantado`, versão efetiva). A esteira passa a apontar o passo seguinte. Aprovar no portal não publica sozinho.
