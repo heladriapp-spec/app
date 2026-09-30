@@ -1,4 +1,5 @@
-import { configurarUsuario, decidirPedido } from '@/app/actions/usuarios'
+import { alterarSenha, configurarUsuario, criarUsuario, decidirPedido, excluirUsuario } from '@/app/actions/usuarios'
+import { usuarioDaSessao } from '@/lib/auth/guard'
 import { GestaoAtalhos } from '@/components/gestao-atalhos'
 import { NotaOperacao } from '@/components/nota-operacao'
 import { Badge } from '@/components/ui/badge'
@@ -12,9 +13,10 @@ import { Shield } from 'lucide-react'
 export default async function AdministracaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string; ok?: string }>
+  searchParams: Promise<{ erro?: string; ok?: string; excluir?: string }>
 }) {
-  const { erro, ok } = await searchParams
+  const { erro, ok, excluir } = await searchParams
+  const sessao = await usuarioDaSessao()
   const store = await lerStore()
   const usuarios = store.usuarios.map(publico)
   const adminsAtivos = usuarios.filter((item) => item.papel === 'administrador' && item.ativo)
@@ -72,9 +74,54 @@ export default async function AdministracaoPage({
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Aprovar registra a decisão. A conta, com usuário e senha escolhidos no link, nasce na
-          entrega do remetente de e-mail.
+          Aprovar só registra a decisão. O e-mail de confirmação ainda não sai. A conta, com
+          usuário e senha, é criada aqui.
         </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium">Nova conta</h2>
+        <form action={criarUsuario} className="grid max-w-xl gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2">
+          <div className="grid gap-1">
+            <Label htmlFor="novo-nome">Nome</Label>
+            <Input id="novo-nome" name="nome" required />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-login">Usuário</Label>
+            <Input id="novo-login" name="login" autoComplete="off" required />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-email">E-mail</Label>
+            <Input id="novo-email" name="email" type="email" autoComplete="off" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-celular">Celular</Label>
+            <Input id="novo-celular" name="celular" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-senha">Senha</Label>
+            <Input id="novo-senha" name="senha" type="password" autoComplete="new-password" required />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-senha2">Repetir senha</Label>
+            <Input id="novo-senha2" name="senha2" type="password" autoComplete="new-password" required />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-papel">Papel</Label>
+            <select
+              id="novo-papel"
+              name="papel"
+              defaultValue="comum"
+              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+            >
+              <option value="comum">Usuário comum</option>
+              <option value="administrador">Administrador</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <Button type="submit">Criar usuário</Button>
+          </div>
+        </form>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -108,7 +155,7 @@ export default async function AdministracaoPage({
                       <Badge variant={usuario.ativo ? 'secondary' : 'destructive'}>
                         {usuario.ativo ? 'Ativo' : 'Inativo'}
                       </Badge>
-                      <details className="mt-2">
+                      <details className="mt-2" open={excluir === usuario.id ? true : undefined}>
                         <summary className="cursor-pointer text-xs underline">Configurar</summary>
                         <form action={configurarUsuario} className="mt-2 grid max-w-xs gap-2">
                           <input type="hidden" name="id" value={usuario.id} />
@@ -146,6 +193,59 @@ export default async function AdministracaoPage({
                             Gravar
                           </Button>
                         </form>
+                        <form action={alterarSenha} className="mt-3 grid max-w-xs gap-2">
+                          <input type="hidden" name="id" value={usuario.id} />
+                          <Label htmlFor={`senha-${usuario.id}`}>Senha nova</Label>
+                          <Input
+                            id={`senha-${usuario.id}`}
+                            name="senha"
+                            type="password"
+                            autoComplete="new-password"
+                            required
+                          />
+                          <Label htmlFor={`senha2-${usuario.id}`}>Repetir senha</Label>
+                          <Input
+                            id={`senha2-${usuario.id}`}
+                            name="senha2"
+                            type="password"
+                            autoComplete="new-password"
+                            required
+                          />
+                          <Button type="submit" size="sm" variant="outline">
+                            Alterar senha
+                          </Button>
+                        </form>
+                        {sessao?.id === usuario.id ? (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            Esta é a conta em que você está. Outro administrador pode excluí-la.
+                          </p>
+                        ) : unico ? (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            O único administrador ativo não pode ser excluído.
+                          </p>
+                        ) : excluir === usuario.id ? (
+                          <form action={excluirUsuario} className="mt-3 grid gap-2">
+                            <input type="hidden" name="id" value={usuario.id} />
+                            <p className="text-xs">
+                              Excluir {usuario.login}? A pessoa deixa de entrar. O histórico permanece.
+                            </p>
+                            <div className="flex gap-2">
+                              <Button type="submit" size="sm" variant="destructive">
+                                Excluir
+                              </Button>
+                              <a href="/administracao" className="text-xs underline">
+                                Cancelar
+                              </a>
+                            </div>
+                          </form>
+                        ) : (
+                          <a
+                            href={`/administracao?excluir=${usuario.id}`}
+                            className="mt-3 inline-block text-xs text-destructive underline"
+                          >
+                            Excluir usuário
+                          </a>
+                        )}
                       </details>
                     </td>
                   </tr>

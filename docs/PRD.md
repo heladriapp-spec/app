@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.2.0 — criar projeto, carregar a planilha do SESC e preencher na tela, nesta máquina. Concluir e baixar o arquivo fiel é o passo seguinte. Git, Supabase e Vercel ficam depois.  
+**Status:** 0.3.0 — o administrador cria a conta, define a senha, troca a senha e exclui o usuário. O e-mail de confirmação continua na entrega do remetente. Concluir e baixar o arquivo fiel é o passo seguinte da planilha.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -114,7 +114,10 @@ Visível só para o administrador:
 - Fila de pedidos de acesso: nome, e-mail, celular, data do pedido, situação (pendente, aprovado, rejeitado).
 - Aprovar ou rejeitar pedido pendente.
 - Listar usuários (nome, e-mail, celular, login, papel, ativo ou inativo).
+- Criar usuário com login e senha, sem esperar o e-mail de confirmação. E-mail e celular podem ficar em branco.
 - Editar nome, celular e papel.
+- Definir uma senha nova para um usuário existente. A senha anterior deixa de valer. A senha não fica visível.
+- Excluir usuário. Ele deixa de entrar. O histórico do que ele fez permanece. Quem está na própria conta não se exclui. O único administrador ativo não é excluído nem desativado.
 - Desativar usuário. Desativado não entra. Não apagar histórico do que ele fez. O `adm` da instalação não é desativado enquanto for o único administrador.
 
 Login é único. E-mail, quando existe, é único. E-mail que já pertence a uma conta, ou a um pedido ainda pendente, não abre outro pedido. As contas `adm` e `convidado` não têm e-mail e não entram nessa fila.

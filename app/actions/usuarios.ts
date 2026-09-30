@@ -1,10 +1,12 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth/guard'
+import { hashSenha } from '@/lib/auth/senha'
 import { alterarStore, registrarNo, type Papel } from '@/lib/operacao/store'
+import { alterarProjetos } from '@/lib/projetos/store'
 import { redirect } from 'next/navigation'
 
-function voltar(texto: string, ok = false) {
+function voltar(texto: string, ok = false): never {
   const chave = ok ? 'ok' : 'erro'
   redirect(`/administracao?${chave}=${encodeURIComponent(texto)}`)
 }
@@ -27,7 +29,7 @@ export async function decidirPedido(formData: FormData) {
       ator: admin.login,
       mensagem:
         acao === 'aprovar'
-          ? `${admin.login} aprovou o pedido de ${pedido.nome}. A conta nasce quando o e-mail de confirmação existir.`
+          ? `${admin.login} aprovou o pedido de ${pedido.nome}. A conta nasce quando ele criar o usuário aqui.`
           : `${admin.login} rejeitou o pedido de ${pedido.nome}.`,
       detalhe: { email: pedido.email },
     })
@@ -35,7 +37,12 @@ export async function decidirPedido(formData: FormData) {
   })
 
   if (erro) voltar(erro)
-  voltar(acao === 'aprovar' ? 'Pedido aprovado. A confirmação por e-mail está na fila.' : 'Pedido rejeitado.', true)
+  voltar(
+    acao === 'aprovar'
+      ? 'Pedido aprovado. Crie a conta em Usuários: o e-mail de confirmação ainda não sai.'
+      : 'Pedido rejeitado.',
+    true,
+  )
 }
 
 export async function configurarUsuario(formData: FormData) {
@@ -75,4 +82,128 @@ export async function configurarUsuario(formData: FormData) {
 
   if (erro) voltar(erro)
   voltar('Configuração gravada.', true)
+}
+
+function senhaInformada(formData: FormData) {
+  const senha = String(formData.get('senha') ?? '')
+  const senha2 = String(formData.get('senha2') ?? '')
+  if (senha.length < 8) voltar('A senha precisa de ao menos 8 caracteres.')
+  if (senha !== senha2) voltar('As senhas não conferem.')
+  return senha
+}
+
+function loginInformado(bruto: string) {
+  const login = bruto.trim().toLowerCase()
+  if (!/^[a-z0-9._-]{3,32}$/.test(login)) {
+    voltar('O usuário usa 3 a 32 caracteres: letras, números, ponto, _ ou -.')
+  }
+  return login
+}
+
+export async function criarUsuario(formData: FormData) {
+  const admin = await requireAdmin()
+  const nome = String(formData.get('nome') ?? '').trim()
+  const emailBruto = String(formData.get('email') ?? '').trim().toLowerCase()
+  const celular = String(formData.get('celular') ?? '').trim()
+  const papel = String(formData.get('papel') ?? 'comum') as Papel
+  const login = loginInformado(String(formData.get('login') ?? ''))
+  const senha = senhaInformada(formData)
+  if (nome.length < 2) voltar('O nome precisa de ao menos 2 caracteres.')
+  if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
+  const email = emailBruto || null
+  if (email && !email.includes('@')) voltar('Informe um e-mail válido ou deixe em branco.')
+
+  const erro = await alterarStore((store) => {
+    if (store.usuarios.some((item) => item.login === login)) {
+      return 'Este usuário já existe.'
+    }
+    if (
+      email &&
+      (store.usuarios.some((item) => item.email === email) ||
+        store.pedidos.some((item) => item.email === email && item.situacao === 'pendente'))
+    ) {
+      return 'Este e-mail já está em uma conta ou em um pedido pendente.'
+    }
+    store.usuarios.push({
+      id: crypto.randomUUID(),
+      nome,
+      email,
+      celular: celular || null,
+      login,
+      senhaHash: hashSenha(senha),
+      papel,
+      ativo: true,
+      origem: 'pedido',
+    })
+    registrarNo(store, {
+      nivel: 'info',
+      evento: 'USER_CREATED',
+      ator: admin.login,
+      mensagem: `${admin.login} criou a conta ${login}.`,
+      detalhe: { login, papel },
+    })
+    return null
+  })
+
+  if (erro) voltar(erro)
+  voltar(`Conta ${login} criada. A pessoa já pode entrar.`, true)
+}
+
+export async function alterarSenha(formData: FormData) {
+  const admin = await requireAdmin()
+  const id = String(formData.get('id') ?? '')
+  const senha = senhaInformada(formData)
+
+  const erro = await alterarStore((store) => {
+    const usuario = store.usuarios.find((item) => item.id === id)
+    if (!usuario) return 'Usuário não encontrado.'
+    usuario.senhaHash = hashSenha(senha)
+    registrarNo(store, {
+      nivel: 'info',
+      evento: 'USER_PASSWORD_CHANGED',
+      ator: admin.login,
+      mensagem: `${admin.login} definiu uma senha nova para ${usuario.login}.`,
+      detalhe: { login: usuario.login },
+    })
+    return null
+  })
+
+  if (erro) voltar(erro)
+  voltar('Senha alterada.', true)
+}
+
+export async function excluirUsuario(formData: FormData) {
+  const admin = await requireAdmin()
+  const id = String(formData.get('id') ?? '')
+  if (id === admin.id) voltar('Você não pode excluir a conta com a qual está entrado.')
+
+  let login = ''
+  const erro = await alterarStore((store) => {
+    const usuario = store.usuarios.find((item) => item.id === id)
+    if (!usuario) return 'Usuário não encontrado.'
+    const adminsDepois = store.usuarios.filter(
+      (item) => item.id !== id && item.papel === 'administrador' && item.ativo,
+    )
+    if (adminsDepois.length === 0) {
+      return 'O único administrador ativo não pode ser excluído.'
+    }
+    login = usuario.login
+    store.usuarios = store.usuarios.filter((item) => item.id !== id)
+    registrarNo(store, {
+      nivel: 'info',
+      evento: 'USER_DELETED',
+      ator: admin.login,
+      mensagem: `${admin.login} excluiu a conta ${login}.`,
+      detalhe: { login },
+    })
+    return null
+  })
+
+  if (erro) voltar(erro)
+  await alterarProjetos((projetos) => {
+    for (const projeto of projetos) {
+      projeto.participantes = projeto.participantes.filter((item) => item !== id)
+    }
+  })
+  voltar(`Conta ${login} excluída.`, true)
 }

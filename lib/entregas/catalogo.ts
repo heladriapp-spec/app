@@ -35,12 +35,26 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     major: true,
   },
   {
+    id: 'contas-manuais',
+    nome: 'Contas criadas pelo administrador',
+    resumo:
+      'O administrador cria a conta com usuário e senha, troca a senha e exclui o usuário. O pedido de acesso continua na fila; o e-mail de confirmação fica na entrega do remetente.',
+    tipo: 'nova_funcionalidade',
+    versaoPrevista: '0.3.0',
+    versaoEfetiva: '0.3.0',
+    statusBase: 'nesta_versao',
+    implantado: true,
+    ordemPrioridade: 15,
+    dependsOn: ['av1-operacao'],
+    areas: ['auth', 'ui'],
+  },
+  {
     id: 'preenchimento',
     nome: 'Preenchimento e download fiel',
     resumo:
       'Concluir e baixar devolve o mesmo arquivo, com quantidade, material e mão de obra gravados, sem a linha que o administrador excluiu.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '0.3.0',
+    versaoPrevista: '0.4.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -54,7 +68,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Versionar este portal num remoto que a publicação consiga ligar. Não trava o corte da planilha na máquina.',
     tipo: 'melhoria',
-    versaoPrevista: '0.4.0',
+    versaoPrevista: '0.5.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -68,7 +82,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Usuários, pedidos, projetos e a planilha de origem passam do arquivo local para o Postgres e o Storage. A chave fica fora do Git.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '0.5.0',
+    versaoPrevista: '0.6.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -80,9 +94,9 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     id: 'email',
     nome: 'Remetente de confirmação e de senha',
     resumo:
-      'Aprovar um pedido passa a enviar o link de uso único. Esqueci a senha usa o mesmo remetente. Contas da instalação continuam sem e-mail.',
+      'Aprovar um pedido passa a enviar o link de uso único. Esqueci a senha usa o mesmo remetente. Até lá o administrador cria a conta na mão. Contas da instalação continuam sem e-mail.',
     tipo: 'melhoria',
-    versaoPrevista: '0.6.0',
+    versaoPrevista: '0.7.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -96,7 +110,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'O primeiro deploy espera o fluxo local de pé. O seguinte sai do Git, no plano gratuito, sem banco da Vercel.',
     tipo: 'melhoria',
-    versaoPrevista: '0.7.0',
+    versaoPrevista: '0.8.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -110,7 +124,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Quem alterou cada campo, exclusão e reinclusão, e a lista de versões do estado da planilha.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '0.8.0',
+    versaoPrevista: '0.9.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -124,7 +138,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Outra planilha do SESC, para ver se aba, colunas e fórmulas se repetem. Até lá o Anexo III do Cosmo/Chão não vira modelo universal.',
     tipo: 'melhoria',
-    versaoPrevista: '0.9.0',
+    versaoPrevista: '1.0.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -138,7 +152,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Rateio de material e mão de obra para as colunas F e G. Não entra no primeiro deploy e não substitui o arquivo do SESC.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '1.0.0',
+    versaoPrevista: '1.1.0',
     versaoEfetiva: null,
     statusBase: 'proposto',
     implantado: false,

@@ -1,6 +1,6 @@
 /** Versão estável visível na UI. Manter igual ao package.json. */
-export const VERSAO_APP = '0.2'
-export const VERSAO_SEMVER = '0.2.0'
+export const VERSAO_APP = '0.3'
+export const VERSAO_SEMVER = '0.3.0'
 /** Ainda não há publicação. Não usar a versão de DEV no lugar desta. */
 export const VERSAO_PRODUCAO = 'não publicada'
 
