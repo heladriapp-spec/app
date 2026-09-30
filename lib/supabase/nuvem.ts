@@ -57,8 +57,12 @@ export async function removerPlanilha(id: string) {
   if (resposta.status >= 300 && resposta.status < 400) {
     throw new Error('O Supabase pediu um redirecionamento. A chave não foi enviada adiante.')
   }
-  if (resposta.status === 404) return
+  if (resposta.status === 404) {
+    await resposta.body?.cancel()
+    return
+  }
   if (!resposta.ok) throw await falha(resposta)
+  await resposta.body?.cancel()
 }
 
 export async function pingUsuarios() {
@@ -120,6 +124,7 @@ async function pedir(
     throw new Error('O Supabase pediu um redirecionamento. A chave não foi enviada adiante.')
   }
   if (!resposta.ok) throw await falha(resposta)
+  if (method !== 'GET') await resposta.body?.cancel()
   return resposta
 }
 
