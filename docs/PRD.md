@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.3.0 — o administrador cria a conta, define a senha, troca a senha e exclui o usuário. O e-mail de confirmação continua na entrega do remetente. Concluir e baixar o arquivo fiel é o passo seguinte da planilha.  
+**Status:** 0.3.0 — o administrador cria a conta, define a senha, troca a senha e exclui o usuário. Quem foi aprovado e ainda não entrou fica visível, com reenvio da confirmação. Esse reenvio não alcança a caixa: o remetente ainda não foi escolhido e a aprovação não envia e-mail. Concluir e baixar o arquivo fiel é o passo seguinte da planilha.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -117,6 +117,7 @@ Visível só para o administrador:
 - Criar usuário com login e senha, sem esperar o e-mail de confirmação. E-mail e celular podem ficar em branco.
 - Editar nome, celular e papel.
 - Definir uma senha nova para um usuário existente. A senha anterior deixa de valer. A senha não fica visível.
+- Ver quem foi aprovado e ainda não fez o primeiro acesso. Reenviar a notificação de confirmação. Enquanto o remetente não estiver ligado, o reenvio registra a tentativa e avisa que nada saiu: a mensagem não ficou retida em serviço nenhum.
 - Excluir usuário. Ele deixa de entrar. O histórico do que ele fez permanece. Quem está na própria conta não se exclui. O único administrador ativo não é excluído nem desativado.
 - Desativar usuário. Desativado não entra. Não apagar histórico do que ele fez. O `adm` da instalação não é desativado enquanto for o único administrador.
 

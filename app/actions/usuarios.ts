@@ -39,9 +39,39 @@ export async function decidirPedido(formData: FormData) {
   if (erro) voltar(erro)
   voltar(
     acao === 'aprovar'
-      ? 'Pedido aprovado. Crie a conta em Usuários: o e-mail de confirmação ainda não sai.'
+      ? 'Pedido aprovado. Nenhum e-mail saiu: não há remetente. A pessoa fica em Aguardando primeiro acesso.'
       : 'Pedido rejeitado.',
     true,
+  )
+}
+
+export async function reenviarNotificacao(formData: FormData) {
+  const admin = await requireAdmin()
+  const id = String(formData.get('id') ?? '')
+
+  const erro = await alterarStore((store) => {
+    const pedido = store.pedidos.find((item) => item.id === id)
+    if (!pedido || pedido.situacao !== 'aprovado') return 'Só dá para reenviar um pedido aprovado.'
+    const usuario = store.usuarios.find(
+      (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
+    )
+    const entrou =
+      usuario != null &&
+      store.logs.some((item) => item.evento === 'USER_LOGIN' && item.ator === usuario.login)
+    if (entrou) return 'Esta pessoa já fez o primeiro acesso.'
+    registrarNo(store, {
+      nivel: 'alerta',
+      evento: 'USER_NOTIFY_RESEND',
+      ator: admin.login,
+      mensagem: `${admin.login} tentou reenviar a confirmação para ${pedido.email}. Não há remetente, então nada saiu.`,
+      detalhe: { email: pedido.email },
+    })
+    return null
+  })
+
+  if (erro) voltar(erro)
+  voltar(
+    'Não reenviei. A aprovação não enviou e-mail: não há remetente ligado. A mensagem não chegou na caixa porque ela não partiu daqui.',
   )
 }
 

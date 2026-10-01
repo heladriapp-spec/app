@@ -1,4 +1,11 @@
-import { alterarSenha, configurarUsuario, criarUsuario, decidirPedido, excluirUsuario } from '@/app/actions/usuarios'
+import {
+  alterarSenha,
+  configurarUsuario,
+  criarUsuario,
+  decidirPedido,
+  excluirUsuario,
+  reenviarNotificacao,
+} from '@/app/actions/usuarios'
 import { usuarioDaSessao } from '@/lib/auth/guard'
 import { GestaoAtalhos } from '@/components/gestao-atalhos'
 import { NotaOperacao } from '@/components/nota-operacao'
@@ -22,6 +29,23 @@ export default async function AdministracaoPage({
   const adminsAtivos = usuarios.filter((item) => item.papel === 'administrador' && item.ativo)
   const pendentes = store.pedidos.filter((item) => item.situacao === 'pendente')
   const historico = store.pedidos.filter((item) => item.situacao !== 'pendente')
+  const quemEntrou = new Set(
+    store.logs.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator),
+  )
+  const aguardandoAcesso = store.pedidos
+    .filter((item) => item.situacao === 'aprovado')
+    .map((pedido) => {
+      const usuario =
+        store.usuarios.find(
+          (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
+        ) ?? null
+      return {
+        pedido,
+        usuario,
+        entrou: usuario != null && quemEntrou.has(usuario.login),
+      }
+    })
+    .filter((item) => !item.entrou)
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,8 +98,46 @@ export default async function AdministracaoPage({
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Aprovar só registra a decisão. O e-mail de confirmação ainda não sai. A conta, com
+          Aprovar só registra a decisão. Nenhum e-mail sai: não há remetente ligado. A conta, com
           usuário e senha, é criada aqui.
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium">Aguardando primeiro acesso</h2>
+        {aguardandoAcesso.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Ninguém aprovado está sem o primeiro acesso.
+          </p>
+        ) : (
+          <ul className="grid gap-2">
+            {aguardandoAcesso.map(({ pedido, usuario }) => (
+              <li key={pedido.id} className="rounded-lg border bg-card p-3">
+                <p className="font-medium">{pedido.nome}</p>
+                <p className="text-sm text-muted-foreground">
+                  {pedido.email}
+                  {pedido.decididoEm ? ` · aprovado em ${dataHoraBR(pedido.decididoEm)}` : ''}
+                  {pedido.decididoPor ? ` por ${pedido.decididoPor}` : ''}
+                </p>
+                <p className="mt-1 text-sm">
+                  {usuario
+                    ? `Conta ${usuario.login} criada, ainda sem entrar.`
+                    : 'Conta ainda não criada.'}{' '}
+                  Nenhum e-mail de confirmação foi enviado.
+                </p>
+                <form action={reenviarNotificacao} className="mt-2">
+                  <input type="hidden" name="id" value={pedido.id} />
+                  <Button type="submit" size="sm" variant="outline">
+                    Reenviar notificação
+                  </Button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Reenviar não alcança a caixa enquanto o remetente não estiver ligado. A mensagem não
+          ficou retida em serviço nenhum: ela não partiu.
         </p>
       </section>
 
