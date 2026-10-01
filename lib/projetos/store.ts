@@ -12,6 +12,7 @@ import {
   lerTabela,
   removerPlanilha,
   supabaseConfigurado,
+  tabelaAusente,
 } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -158,8 +159,12 @@ export function nomeDeDownload(original: string | null) {
 
 export async function lerArquivoDoProjeto(id: string) {
   if (supabaseConfigurado()) {
-    const doBanco = await baixarArquivoBanco(id, 'origem')
-    if (doBanco) return doBanco
+    try {
+      const doBanco = await baixarArquivoBanco(id, 'origem')
+      if (doBanco) return doBanco
+    } catch (erro) {
+      if (!tabelaAusente(erro)) throw erro
+    }
     return baixarPlanilha(id)
   }
   return readFile(caminhoDoArquivo(id))
@@ -167,8 +172,18 @@ export async function lerArquivoDoProjeto(id: string) {
 
 export async function gravarArquivoDoProjeto(id: string, buf: Buffer, nome: string, ator: string) {
   if (supabaseConfigurado()) {
-    await gravarArquivoBanco(id, 'origem', nome, buf, ator)
-    await enviarPlanilha(id, buf)
+    let noBanco = false
+    try {
+      await gravarArquivoBanco(id, 'origem', nome, buf, ator)
+      noBanco = true
+    } catch (erro) {
+      if (!tabelaAusente(erro)) throw erro
+    }
+    try {
+      await enviarPlanilha(id, buf)
+    } catch (erro) {
+      if (!noBanco) throw erro
+    }
     return
   }
   await mkdir(PASTA, { recursive: true })

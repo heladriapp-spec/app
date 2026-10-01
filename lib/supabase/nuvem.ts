@@ -13,7 +13,22 @@ export async function lerTabela<T>(tabela: string, busca = 'select=*'): Promise<
 
 export async function gravarTabela(tabela: string, linhas: unknown[]) {
   if (linhas.length === 0) return
-  await pedir('POST', `/rest/v1/${tabela}`, linhas, 'resolution=merge-duplicates,return=minimal')
+  let atual = linhas.map((linha) => ({ ...(linha as Record<string, unknown>) }))
+  for (let tentativa = 0; tentativa < 8; tentativa++) {
+    try {
+      await pedir('POST', `/rest/v1/${tabela}`, atual, 'resolution=merge-duplicates,return=minimal')
+      return
+    } catch (erro) {
+      const coluna = colunaAusente(erro)
+      if (!coluna || atual.some((linha) => linha[coluna] != null)) throw erro
+      atual = atual.map((linha) => {
+        const copia = { ...linha }
+        delete copia[coluna]
+        return copia
+      })
+    }
+  }
+  throw new Error('O Supabase recusou colunas que esta versão não conseguiu gravar.')
 }
 
 export async function apagarFora(tabela: string, coluna: string, ids: string[]) {
@@ -62,7 +77,7 @@ export async function gravarArquivoBanco(
         projeto_id: id,
         papel,
         nome,
-        conteudo: `\\x${buf.toString('hex')}`,
+        conteudo: buf.toString('base64'),
         gravado_em: new Date().toISOString(),
         gravado_por: ator,
       },
@@ -185,7 +200,58 @@ async function pedir(
   return resposta
 }
 
+export function tabelaAusente(erro: unknown) {
+  return codigoDe(erro) === 'PGRST205'
+}
+
+function colunaAusente(erro: unknown) {
+  const codigo = codigoDe(erro)
+  if (codigo !== 'PGRST204' && codigo !== '42703') return null
+  if (!erro || typeof erro !== 'object' || !('coluna' in erro)) return null
+  const coluna = (erro as { coluna?: unknown }).coluna
+  return typeof coluna === 'string' && /^[\w]+$/.test(coluna) ? coluna : null
+}
+
+function codigoDe(erro: unknown) {
+  if (!erro || typeof erro !== 'object' || !('codigo' in erro)) return ''
+  const codigo = (erro as { codigo?: unknown }).codigo
+  return typeof codigo === 'string' ? codigo : ''
+}
+
 async function falha(resposta: Response) {
-  await resposta.body?.cancel()
-  return new Error(`Supabase respondeu ${resposta.status}.`)
+  const texto = await resposta.text().catch(() => '')
+  let codigo = ''
+  let detalhe = ''
+  try {
+    const json = JSON.parse(texto) as { code?: string; message?: string; error?: string; details?: string }
+    codigo = json.code ?? ''
+    detalhe = json.message || json.error || json.details || ''
+  } catch {
+    detalhe = texto.replace(/\s+/g, ' ').trim().slice(0, 180)
+  }
+  const coluna =
+    /Could not find the '([\w]+)' column/.exec(detalhe)?.[1] ??
+    /column "([\w]+)"/.exec(detalhe)?.[1] ??
+    ''
+  const erro = new Error(mensagemSupabase(resposta.status, codigo, coluna, detalhe)) as Error & {
+    codigo?: string
+    coluna?: string
+  }
+  if (codigo) erro.codigo = codigo
+  if (coluna) erro.coluna = coluna
+  return erro
+}
+
+function mensagemSupabase(status: number, codigo: string, coluna: string, detalhe: string) {
+  if (codigo === 'PGRST204') {
+    return coluna
+      ? `O Supabase ainda não tem a coluna “${coluna}”.`
+      : 'O Supabase ainda não tem uma coluna desta versão.'
+  }
+  if (codigo === 'PGRST205') return 'O Supabase ainda não tem a tabela desta versão.'
+  if (codigo === '23514') return 'O Supabase recusou o status do projeto. Falta a atualização do banco.'
+  if (codigo === '22P02') return 'O Supabase recusou o formato da planilha.'
+  const curto = detalhe.replace(/\s+/g, ' ').trim().slice(0, 160)
+  if (curto && !/key|token|secret|bearer/i.test(curto)) return `Supabase respondeu ${status}: ${curto}`
+  return `Supabase respondeu ${status}.`
 }
