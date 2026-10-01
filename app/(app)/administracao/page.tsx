@@ -62,8 +62,16 @@ export default async function AdministracaoPage({
         <GestaoAtalhos atual="/administracao" />
       </div>
 
-      {ok ? <p className="rounded-lg border px-3 py-2 text-sm">{ok}</p> : null}
-      {erro ? <p className="rounded-lg border px-3 py-2 text-sm text-destructive">{erro}</p> : null}
+      {ok ? (
+        <p role="status" className="rounded-lg border px-3 py-2 text-sm">
+          {ok}
+        </p>
+      ) : null}
+      {erro ? (
+        <p role="alert" className="rounded-lg border px-3 py-2 text-sm text-destructive">
+          {erro}
+        </p>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Pedidos de acesso</h2>

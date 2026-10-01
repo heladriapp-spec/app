@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/auth/guard'
 import { hashSenha } from '@/lib/auth/senha'
 import { alterarStore, registrarNo, type Papel } from '@/lib/operacao/store'
 import { alterarProjetos } from '@/lib/projetos/store'
-import { redirect } from 'next/navigation'
+import { redirect, unstable_rethrow } from 'next/navigation'
 
 function voltar(texto: string, ok = false): never {
   const chave = ok ? 'ok' : 'erro'
@@ -118,7 +118,7 @@ function senhaInformada(formData: FormData) {
   const senha = String(formData.get('senha') ?? '')
   const senha2 = String(formData.get('senha2') ?? '')
   if (senha.length < 8) voltar('A senha precisa de ao menos 8 caracteres.')
-  if (senha !== senha2) voltar('As senhas não conferem.')
+  if (senha !== senha2) voltar('A senha nova e a repetição não são iguais.')
   return senha
 }
 
@@ -184,21 +184,25 @@ export async function alterarSenha(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   const senha = senhaInformada(formData)
 
-  const erro = await alterarStore((store) => {
-    const usuario = store.usuarios.find((item) => item.id === id)
-    if (!usuario) return 'Usuário não encontrado.'
-    usuario.senhaHash = hashSenha(senha)
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_PASSWORD_CHANGED',
-      ator: admin.login,
-      mensagem: `${admin.login} definiu uma senha nova para ${usuario.login}.`,
-      detalhe: { login: usuario.login },
+  try {
+    const erro = await alterarStore((store) => {
+      const usuario = store.usuarios.find((item) => item.id === id)
+      if (!usuario) return 'Usuário não encontrado.'
+      usuario.senhaHash = hashSenha(senha)
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'USER_PASSWORD_CHANGED',
+        ator: admin.login,
+        mensagem: `${admin.login} definiu uma senha nova para ${usuario.login}.`,
+        detalhe: { login: usuario.login },
+      })
+      return null
     })
-    return null
-  })
-
-  if (erro) voltar(erro)
+    if (erro) voltar(erro)
+  } catch (error) {
+    unstable_rethrow(error)
+    voltar('Não foi possível gravar a senha. Tente de novo.')
+  }
   voltar('Senha alterada.', true)
 }
 

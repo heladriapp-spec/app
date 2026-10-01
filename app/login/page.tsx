@@ -22,7 +22,10 @@ export default async function LoginPage({
         lançamento na planilha fica com quem ele incluir.
       </p>
       {erro ? (
-        <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive"
+        >
           {erro}
         </p>
       ) : null}

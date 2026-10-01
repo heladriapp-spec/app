@@ -3,50 +3,70 @@
 import { confereSenha } from '@/lib/auth/senha'
 import { gravarSessao, limparSessao, usuarioDaSessao } from '@/lib/auth/guard'
 import { alterarStore, registrarNo } from '@/lib/operacao/store'
-import { redirect } from 'next/navigation'
+import { redirect, unstable_rethrow } from 'next/navigation'
+
+function avisoLogin(motivo: 'inexistente' | 'senha' | 'inativo') {
+  if (motivo === 'inexistente') return 'Usuário inexistente.'
+  if (motivo === 'senha') return 'Senha incorreta.'
+  return 'Esta conta está desativada.'
+}
 
 export async function entrar(formData: FormData) {
-  const login = String(formData.get('login') ?? '').trim()
+  const login = String(formData.get('login') ?? '').trim().toLowerCase()
   const senha = String(formData.get('senha') ?? '')
 
-  const resultado = await alterarStore((store) => {
-    const usuario = store.usuarios.find((item) => item.login === login)
-    if (!usuario || !confereSenha(senha, usuario.senhaHash)) {
+  let resultado: { ok: false; motivo: 'inexistente' | 'senha' | 'inativo' } | { ok: true; id: string }
+  try {
+    resultado = await alterarStore((store) => {
+      const usuario = store.usuarios.find((item) => item.login === login)
+      if (!usuario) {
+        registrarNo(store, {
+          nivel: 'alerta',
+          evento: 'USER_LOGIN_FAILED',
+          ator: null,
+          mensagem: 'Tentativa de login recusada.',
+          detalhe: { login },
+        })
+        return { ok: false as const, motivo: 'inexistente' as const }
+      }
+      if (!confereSenha(senha, usuario.senhaHash)) {
+        registrarNo(store, {
+          nivel: 'alerta',
+          evento: 'USER_LOGIN_FAILED',
+          ator: null,
+          mensagem: 'Tentativa de login recusada.',
+          detalhe: { login },
+        })
+        return { ok: false as const, motivo: 'senha' as const }
+      }
+      if (!usuario.ativo) {
+        registrarNo(store, {
+          nivel: 'alerta',
+          evento: 'USER_LOGIN_FAILED',
+          ator: usuario.login,
+          mensagem: 'Conta desativada tentou entrar.',
+          detalhe: { login },
+        })
+        return { ok: false as const, motivo: 'inativo' as const }
+      }
       registrarNo(store, {
-        nivel: 'alerta',
-        evento: 'USER_LOGIN_FAILED',
-        ator: null,
-        mensagem: 'Tentativa de login recusada.',
-        detalhe: { login },
-      })
-      return { ok: false as const, motivo: 'credencial' }
-    }
-    if (!usuario.ativo) {
-      registrarNo(store, {
-        nivel: 'alerta',
-        evento: 'USER_LOGIN_FAILED',
+        nivel: 'info',
+        evento: 'USER_LOGIN',
         ator: usuario.login,
-        mensagem: 'Conta desativada tentou entrar.',
-        detalhe: { login },
+        mensagem: `${usuario.login} entrou.`,
+        detalhe: { papel: usuario.papel },
       })
-      return { ok: false as const, motivo: 'inativo' }
-    }
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_LOGIN',
-      ator: usuario.login,
-      mensagem: `${usuario.login} entrou.`,
-      detalhe: { papel: usuario.papel },
+      return { ok: true as const, id: usuario.id }
     })
-    return { ok: true as const, id: usuario.id }
-  })
+  } catch (error) {
+    unstable_rethrow(error)
+    redirect(
+      `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
+    )
+  }
 
   if (!resultado.ok) {
-    const texto =
-      resultado.motivo === 'inativo'
-        ? 'Esta conta está desativada.'
-        : 'Usuário ou senha não conferem.'
-    redirect(`/login?erro=${encodeURIComponent(texto)}`)
+    redirect(`/login?erro=${encodeURIComponent(avisoLogin(resultado.motivo))}`)
   }
 
   await gravarSessao(resultado.id)
