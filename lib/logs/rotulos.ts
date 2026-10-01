@@ -18,5 +18,7 @@ export const EVENTO_LABEL: Record<string, string> = {
   PROJECT_CREATED: 'Projeto criado',
   PROJECT_FILE: 'Planilha carregada',
   PROJECT_SAVED: 'Preenchimento gravado',
+  PROJECT_DRAFT: 'Rascunho gravado',
+  PROJECT_CONCLUDED: 'Projeto concluído',
   PROJECT_DOWNLOADED: 'Planilha baixada',
 }

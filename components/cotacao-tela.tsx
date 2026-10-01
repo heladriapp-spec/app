@@ -1,6 +1,8 @@
 'use client'
 
 import { salvarPreenchimento } from '@/app/actions/projetos'
+import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
+import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
 import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,10 +35,12 @@ const STATUS: Record<string, string> = {
 
 export function CotacaoTela({
   projetoId,
+  arquivoNome,
   cotacao,
   iniciais,
 }: {
   projetoId: string
+  arquivoNome: string | null
   cotacao: CotacaoLida
   iniciais: Valores
 }) {
@@ -45,6 +49,7 @@ export function CotacaoTela({
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
   const [aviso, setAviso] = useState('')
   const [baixando, setBaixando] = useState(false)
+  const [concluindo, setConcluindo] = useState(false)
   const router = useRouter()
   const totais = totaisDe(cotacao, valores)
   const ordem = capitulos.findIndex((item) => item.id === aberto)
@@ -76,9 +81,24 @@ export function CotacaoTela({
     }
   }
 
+  async function aoConcluir(form: HTMLFormElement) {
+    setConcluindo(true)
+    setAviso('')
+    try {
+      const erro = await baixarPlanilha(form, { concluir: true })
+      if (erro) setAviso(erro)
+      else router.refresh()
+    } catch {
+      setAviso('Não foi possível concluir o projeto.')
+    } finally {
+      setConcluindo(false)
+    }
+  }
+
   return (
     <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
+      <NotaArquivoReferencial nome={arquivoNome} />
       <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <nav className="flex flex-col gap-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
           <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -176,19 +196,13 @@ export function CotacaoTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" variant="outline">
-                    Salvar preenchimento
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={baixando}
-                    onClick={(evento) => {
-                      const form = evento.currentTarget.form
-                      if (form) void aoBaixar(form)
-                    }}
-                  >
-                    {baixando ? 'Preparando…' : 'Baixar planilha'}
-                  </Button>
+                  <AcoesPreenchimento
+                    ocupado={baixando || concluindo}
+                    baixando={baixando}
+                    concluindo={concluindo}
+                    onBaixar={(form) => void aoBaixar(form)}
+                    onConcluir={(form) => void aoConcluir(form)}
+                  />
                   {proximo ? (
                     <Button type="button" onClick={() => setAberto(proximo.id)}>
                       {proximo.nome}

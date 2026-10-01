@@ -19,9 +19,9 @@ export default async function NovoProjetoPage({
       <div>
         <h1 className="text-xl font-semibold">Criar novo projeto</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Nome e data identificam o trabalho. A planilha do SESC pode entrar agora ou depois. Com o
-          arquivo, abre a tela de preenchimento. O memorial descritivo é outro documento e não entra
-          neste formulário.
+          Nome e data identificam o trabalho. A planilha do SESC, se entrar agora, fica amarrada a
+          este projeto como arquivo referencial. Dá para salvar em rascunho e concluir depois. O
+          memorial descritivo é outro documento e não entra neste formulário.
         </p>
       </div>
       {erro ? (
@@ -39,17 +39,25 @@ export default async function NovoProjetoPage({
           <Input id="data" name="data" type="date" required defaultValue={dataHojeISO()} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="arquivo">Planilha do SESC</Label>
+          <Label htmlFor="arquivo">Planilha referencial</Label>
           <Input
             id="arquivo"
             name="arquivo"
             type="file"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           />
-          <p className="text-xs text-muted-foreground">Opcional. Arquivo .xlsx daquele trabalho.</p>
+          <p className="text-xs text-muted-foreground">
+            Opcional. O arquivo .xlsx fica guardado com o projeto e é a base da planilha gerada na
+            conclusão.
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button type="submit">Criar projeto</Button>
+          <Button type="submit" name="acao" value="rascunho" variant="outline">
+            Salvar rascunho
+          </Button>
+          <Button type="submit" name="acao" value="criar">
+            Criar projeto
+          </Button>
           <Link
             href="/"
             className="inline-flex h-8 items-center rounded-lg border px-2.5 text-sm font-medium"

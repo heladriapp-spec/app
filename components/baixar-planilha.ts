@@ -1,10 +1,15 @@
 'use client'
 
-export async function baixarPlanilha(form: HTMLFormElement): Promise<string | null> {
-  const id = String(new FormData(form).get('id') ?? '')
+export async function baixarPlanilha(
+  form: HTMLFormElement,
+  opcoes?: { concluir?: boolean },
+): Promise<string | null> {
+  const dados = new FormData(form)
+  if (opcoes?.concluir) dados.set('concluir', '1')
+  const id = String(dados.get('id') ?? '')
   const resposta = await fetch(`/api/projetos/${id}/planilha`, {
     method: 'POST',
-    body: new FormData(form),
+    body: dados,
   })
   if (!resposta.ok) return (await resposta.text()) || 'Não foi possível baixar a planilha.'
   const blob = await resposta.blob()

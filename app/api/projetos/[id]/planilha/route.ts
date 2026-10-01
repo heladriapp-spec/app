@@ -1,8 +1,18 @@
 import { usuarioDaSessao } from '@/lib/auth/guard'
 import { aplicarPreenchimento } from '@/lib/planilha/gravar'
+import { lancamentosIguais } from '@/lib/projetos/lancamento'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
 import { alterarStore, registrarNo } from '@/lib/operacao/store'
-import { alterarProjetos, lerArquivoDoProjeto, planilhaDoProjeto, projetoPorId } from '@/lib/projetos/store'
+import {
+  alterarProjetos,
+  apagarArquivoGerado,
+  gravarArquivoGerado,
+  lerArquivoDoProjeto,
+  limparConclusao,
+  nomeDeDownload,
+  planilhaDoProjeto,
+  projetoPorId,
+} from '@/lib/projetos/store'
 import type { Lancamento } from '@/lib/projetos/tipos'
 
 export async function POST(pedido: Request, contexto: { params: Promise<{ id: string }> }) {
@@ -27,12 +37,20 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
   if (!lido.ok) return texto(lido.erro, 400)
 
   const lancamentos: Record<string, Lancamento> = lido.lancamentos
+  const concluir = formData.get('concluir') === '1'
+  const reabriu =
+    !concluir && projeto.status === 'concluido' && !lancamentosIguais(projeto.lancamentos, lancamentos)
+  if (reabriu) await apagarArquivoGerado(id)
   await alterarProjetos((projetos) => {
     const atual = projetos.find((item) => item.id === id)
     if (!atual) return
     atual.lancamentos = lancamentos
     atual.atualizadoEm = new Date().toISOString()
     atual.atualizadoPor = usuario.login
+    if (reabriu) {
+      atual.status = 'em_preenchimento'
+      limparConclusao(atual)
+    }
   })
 
   let arquivo: Buffer
@@ -42,17 +60,36 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
     return texto('Não foi possível montar a planilha.', 500)
   }
 
+  const nome = nomeDeDownload(projeto.arquivoNome)
+  if (concluir) {
+    try {
+      await gravarArquivoGerado(id, nome, arquivo, usuario.login)
+    } catch {
+      return texto('Não foi possível gravar a planilha gerada.', 500)
+    }
+    await alterarProjetos((projetos) => {
+      const atual = projetos.find((item) => item.id === id)
+      if (!atual) return
+      atual.status = 'concluido'
+      atual.arquivoGeradoNome = nome
+      atual.concluidoEm = new Date().toISOString()
+      atual.concluidoPor = usuario.login
+      atual.atualizadoEm = atual.concluidoEm
+      atual.atualizadoPor = usuario.login
+    })
+  }
+
   await alterarStore((store) => {
     registrarNo(store, {
       nivel: 'info',
-      evento: 'PROJECT_DOWNLOADED',
+      evento: concluir ? 'PROJECT_CONCLUDED' : 'PROJECT_DOWNLOADED',
       ator: usuario.login,
-      mensagem: `${usuario.login} baixou a planilha preenchida de “${projeto.nome}”.`,
-      detalhe: { projeto: id },
+      mensagem: concluir
+        ? `${usuario.login} concluiu “${projeto.nome}” e gerou a planilha.`
+        : `${usuario.login} baixou a planilha preenchida de “${projeto.nome}”.`,
+      detalhe: { projeto: id, arquivo: nome },
     })
   })
-
-  const nome = nomeDoArquivo(projeto.arquivoNome)
   return new Response(new Uint8Array(arquivo), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -60,11 +97,6 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
       'Cache-Control': 'no-store',
     },
   })
-}
-
-function nomeDoArquivo(original: string | null) {
-  const base = (original || 'planilha.xlsx').split(/[/\\]/).pop()?.replace(/["\r\n]/g, '') || 'planilha.xlsx'
-  return base.toLowerCase().endsWith('.xlsx') ? base : `${base}.xlsx`
 }
 
 function texto(mensagem: string, status: number) {

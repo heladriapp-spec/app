@@ -46,6 +46,63 @@ export async function baixarPlanilha(id: string) {
   return Buffer.from(await resposta.arrayBuffer())
 }
 
+export async function gravarArquivoBanco(
+  id: string,
+  papel: 'origem' | 'gerado',
+  nome: string,
+  buf: Buffer,
+  ator: string,
+) {
+  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao gravar a planilha.')
+  await pedir(
+    'POST',
+    '/rest/v1/projeto_arquivos',
+    [
+      {
+        projeto_id: id,
+        papel,
+        nome,
+        conteudo: `\\x${buf.toString('hex')}`,
+        gravado_em: new Date().toISOString(),
+        gravado_por: ator,
+      },
+    ],
+    'resolution=merge-duplicates,return=minimal',
+  )
+}
+
+export async function baixarArquivoBanco(id: string, papel: 'origem' | 'gerado') {
+  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao ler a planilha.')
+  const linhas = await lerTabela<{ conteudo: string | null }>(
+    'projeto_arquivos',
+    `select=conteudo&projeto_id=eq.${id}&papel=eq.${papel}&limit=1`,
+  )
+  const conteudo = linhas[0]?.conteudo
+  if (!conteudo) return null
+  if (conteudo.startsWith('\\x')) return Buffer.from(conteudo.slice(2), 'hex')
+  return Buffer.from(conteudo, 'base64')
+}
+
+export async function apagarArquivoBanco(id: string, papel?: 'origem' | 'gerado') {
+  if (!/^[\w-]+$/.test(id)) return
+  const filtro = papel ? `&papel=eq.${papel}` : ''
+  const resposta = await fetch(endereco(`/rest/v1/projeto_arquivos?projeto_id=eq.${id}${filtro}`), {
+    method: 'DELETE',
+    headers: cabecalhos(),
+    cache: 'no-store',
+    redirect: 'manual',
+  })
+  if (resposta.status >= 300 && resposta.status < 400) {
+    throw new Error('O Supabase pediu um redirecionamento. A chave não foi enviada adiante.')
+  }
+  if (resposta.status === 404) {
+    await resposta.body?.cancel()
+    return
+  }
+  if (!resposta.ok) throw await falha(resposta)
+  await resposta.body?.cancel()
+}
+
 export async function removerPlanilha(id: string) {
   if (!/^[\w-]+$/.test(id)) return
   const resposta = await fetch(endereco(`/storage/v1/object/${BUCKET}/${id}.xlsx`), {

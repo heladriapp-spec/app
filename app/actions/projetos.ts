@@ -2,13 +2,16 @@
 
 import { requireAdmin, requireUser } from '@/lib/auth/guard'
 import { lerPlanilha } from '@/lib/planilha/ler'
+import { lancamentosIguais } from '@/lib/projetos/lancamento'
 import { dataHojeISO } from '@/lib/planilha/numeros'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
 import {
   alterarProjetos,
   apagarArquivoDoProjeto,
+  apagarArquivoGerado,
   aplicarPlanilha,
   gravarArquivoDoProjeto,
+  limparConclusao,
   planilhaDoProjeto,
   projetoPorId,
 } from '@/lib/projetos/store'
@@ -64,6 +67,7 @@ export async function criarProjeto(formData: FormData) {
 
   const agora = new Date().toISOString()
   const id = crypto.randomUUID()
+  const rascunho = String(formData.get('acao') ?? '') === 'rascunho'
   const projeto: Projeto = {
     id,
     nome,
@@ -74,13 +78,16 @@ export async function criarProjeto(formData: FormData) {
     atualizadoPor: admin.login,
     participantes: [admin.id],
     arquivoNome: null,
+    arquivoGeradoNome: null,
+    concluidoEm: null,
+    concluidoPor: null,
     capa: null,
-    status: 'sem_planilha',
+    status: rascunho ? 'rascunho' : 'sem_planilha',
     lancamentos: {},
   }
   if (upload) {
-    await gravarArquivoDoProjeto(id, upload.buf)
-    aplicarPlanilha(projeto, upload.nome, upload.lida, admin.login)
+    await gravarArquivoDoProjeto(id, upload.buf, upload.nome, admin.login)
+    aplicarPlanilha(projeto, upload.nome, upload.lida, admin.login, rascunho)
   }
 
   await alterarProjetos((projetos) => {
@@ -91,8 +98,10 @@ export async function criarProjeto(formData: FormData) {
       nivel: 'info',
       evento: 'PROJECT_CREATED',
       ator: admin.login,
-      mensagem: `${admin.login} criou o projeto “${nome}”.`,
-      detalhe: { projeto: id, planilha: Boolean(upload) },
+      mensagem: rascunho
+        ? `${admin.login} salvou o rascunho “${nome}”.`
+        : `${admin.login} criou o projeto “${nome}”.`,
+      detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
     })
   })
   redirect(`/projetos/${id}`)
@@ -136,11 +145,12 @@ export async function carregarPlanilha(formData: FormData) {
   }
   if (!upload) voltar(`/projetos/${id}`, 'Escolha a planilha .xlsx do SESC.')
 
-  await gravarArquivoDoProjeto(id, upload.buf)
+  await gravarArquivoDoProjeto(id, upload.buf, upload.nome, admin.login)
+  await apagarArquivoGerado(id)
   await alterarProjetos((projetos) => {
     const atual = projetos.find((item) => item.id === id)
     if (!atual) return
-    aplicarPlanilha(atual, upload.nome, upload.lida, admin.login)
+    aplicarPlanilha(atual, upload.nome, upload.lida, admin.login, atual.status === 'rascunho')
   })
   await alterarStore((store) => {
     registrarNo(store, {
@@ -169,25 +179,7 @@ export async function salvarPreenchimento(formData: FormData) {
 
   const lido = lerLancamentosAnexo(formData, lida.linhas)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  const lancamentos = lido.lancamentos
-
-  await alterarProjetos((projetos) => {
-    const atual = projetos.find((item) => item.id === id)
-    if (!atual) return
-    atual.lancamentos = lancamentos
-    atual.atualizadoEm = new Date().toISOString()
-    atual.atualizadoPor = usuario.login
-  })
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'PROJECT_SAVED',
-      ator: usuario.login,
-      mensagem: `${usuario.login} gravou o preenchimento de “${projeto.nome}”.`,
-      detalhe: { projeto: id },
-    })
-  })
-  voltar(`/projetos/${id}`, 'Preenchimento gravado.', true)
+  await gravarLancamentos(id, projeto.nome, usuario.login, lido.lancamentos, formData.get('acao') === 'rascunho')
 }
 
 async function gravarCotacao(
@@ -199,25 +191,52 @@ async function gravarCotacao(
 ) {
   const lido = lerLancamentosCotacao(formData, cotacao)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  const lancamentos = lido.lancamentos
+  await gravarLancamentos(id, nome, ator, lido.lancamentos, formData.get('acao') === 'rascunho')
+}
 
+async function gravarLancamentos(
+  id: string,
+  nome: string,
+  ator: string,
+  lancamentos: Projeto['lancamentos'],
+  rascunho: boolean,
+) {
+  const antes = await projetoPorId(id)
+  const reabriu = Boolean(
+    !rascunho && antes?.status === 'concluido' && !lancamentosIguais(antes.lancamentos, lancamentos),
+  )
+  if (rascunho || reabriu) await apagarArquivoGerado(id)
   await alterarProjetos((projetos) => {
     const atual = projetos.find((item) => item.id === id)
     if (!atual) return
     atual.lancamentos = lancamentos
     atual.atualizadoEm = new Date().toISOString()
     atual.atualizadoPor = ator
+    if (rascunho) {
+      atual.status = 'rascunho'
+      limparConclusao(atual)
+    } else if (reabriu) {
+      atual.status = 'em_preenchimento'
+      limparConclusao(atual)
+    }
   })
   await alterarStore((store) => {
     registrarNo(store, {
       nivel: 'info',
-      evento: 'PROJECT_SAVED',
+      evento: rascunho ? 'PROJECT_DRAFT' : 'PROJECT_SAVED',
       ator,
-      mensagem: `${ator} gravou o preenchimento de “${nome}”.`,
+      mensagem: rascunho
+        ? `${ator} salvou o rascunho de “${nome}”.`
+        : `${ator} gravou o preenchimento de “${nome}”.`,
       detalhe: { projeto: id },
     })
   })
-  voltar(`/projetos/${id}`, 'Preenchimento gravado.', true)
+  const aviso = rascunho
+    ? 'Rascunho gravado.'
+    : reabriu
+      ? 'Preenchimento gravado. O projeto voltou para em preenchimento.'
+      : 'Preenchimento gravado.'
+  voltar(`/projetos/${id}`, aviso, true)
 }
 
 function podeLancar(usuarioId: string, papel: string, projeto: Projeto) {

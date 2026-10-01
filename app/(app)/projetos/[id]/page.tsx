@@ -1,4 +1,5 @@
 import { carregarPlanilha } from '@/app/actions/projetos'
+import { ArquivoReferencial } from '@/components/arquivo-referencial'
 import { CotacaoTela } from '@/components/cotacao-tela'
 import { RemoverProjeto } from '@/components/remover-projeto'
 import { PlanilhaTela } from '@/components/planilha-tela'
@@ -9,13 +10,9 @@ import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
+import { STATUS_PROJETO } from '@/lib/projetos/tipos'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-
-const STATUS = {
-  sem_planilha: 'Sem planilha',
-  em_preenchimento: 'Em preenchimento',
-}
 
 export default async function ProjetoPage({
   params,
@@ -46,7 +43,7 @@ export default async function ProjetoPage({
           </p>
           <h1 className="mt-1 text-xl font-semibold">{projeto.nome}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {dataProjetoBR(projeto.data)} · {STATUS[projeto.status]} · última alteração{' '}
+            {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]} · última alteração{' '}
             {dataHoraBR(projeto.atualizadoEm)} por {projeto.atualizadoPor}
           </p>
         </div>
@@ -81,33 +78,35 @@ export default async function ProjetoPage({
       ) : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <div className="flex flex-col gap-3">
+          <ArquivoReferencial projeto={projeto} />
           <p className="text-sm text-muted-foreground">
             {lida.cotacao.subtitulo || lida.cotacao.titulo}
-            {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''}
           </p>
           <CotacaoTela
             projetoId={projeto.id}
+            arquivoNome={projeto.arquivoNome}
             cotacao={lida.cotacao}
             iniciais={valoresDaCotacao(projeto, lida.cotacao)}
           />
         </div>
       ) : lida ? (
         <div className="flex flex-col gap-3">
+          <ArquivoReferencial projeto={projeto} />
           <p className="text-sm text-muted-foreground">
             {lida.capa.aba}
             {lida.capa.processo ? ` · ${lida.capa.processo}` : ''}
             {lida.capa.evento ? ` · ${lida.capa.evento}` : ''}
             {lida.capa.unidade ? ` · ${lida.capa.unidade}` : ''}
-            {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''}
           </p>
           <PlanilhaTela projeto={projeto} linhas={lida.linhas} />
         </div>
       ) : (
         <div className="max-w-lg rounded-lg border p-4">
-          <h2 className="text-sm font-medium">Planilha do SESC</h2>
+          <h2 className="text-sm font-medium">Planilha referencial</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Este projeto ainda não tem arquivo. A tela de preenchimento abre quando a planilha for
-            carregada.
+            {projeto.status === 'rascunho'
+              ? 'Este projeto está em rascunho. A planilha que você carregar fica amarrada a ele e abre o preenchimento.'
+              : 'Este projeto ainda não tem arquivo. A tela de preenchimento abre quando a planilha for carregada.'}
           </p>
           {usuario.papel === 'administrador' ? (
             <form action={carregarPlanilha} className="mt-4 grid gap-3">

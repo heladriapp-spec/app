@@ -2,9 +2,12 @@ import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
 import type { Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
 import {
+  apagarArquivoBanco,
   apagarFora,
+  baixarArquivoBanco,
   baixarPlanilha,
   enviarPlanilha,
+  gravarArquivoBanco,
   gravarTabela,
   lerTabela,
   removerPlanilha,
@@ -23,7 +26,7 @@ async function lerIndice(): Promise<Projeto[]> {
   try {
     const bruto = await readFile(INDICE, 'utf8')
     const json = JSON.parse(bruto) as { projetos?: Projeto[] }
-    return json.projetos ?? []
+    return (json.projetos ?? []).map(completarProjeto)
   } catch {
     return []
   }
@@ -39,6 +42,9 @@ type ProjetoRow = {
   atualizado_por: string
   arquivo_nome: string | null
   arquivo_caminho: string | null
+  arquivo_gerado_nome: string | null
+  concluido_em: string | null
+  concluido_por: string | null
   capa: CapaPlanilha | null
   status: StatusProjeto
   lancamentos: Record<string, Lancamento> | null
@@ -62,6 +68,9 @@ async function lerNuvem(): Promise<Projeto[]> {
     atualizadoPor: item.atualizado_por,
     participantes: vinculos.filter((vinculo) => vinculo.projeto_id === item.id).map((vinculo) => vinculo.usuario_id),
     arquivoNome: item.arquivo_nome,
+    arquivoGeradoNome: item.arquivo_gerado_nome,
+    concluidoEm: item.concluido_em,
+    concluidoPor: item.concluido_por,
     capa: item.capa,
     status: item.status,
     lancamentos: item.lancamentos ?? {},
@@ -81,6 +90,9 @@ async function gravarNuvem(projetos: Projeto[]) {
       atualizado_por: item.atualizadoPor,
       arquivo_nome: item.arquivoNome,
       arquivo_caminho: item.arquivoNome ? `${item.id}.xlsx` : null,
+      arquivo_gerado_nome: item.arquivoGeradoNome,
+      concluido_em: item.concluidoEm,
+      concluido_por: item.concluidoPor,
       capa: item.capa,
       status: item.status,
       lancamentos: item.lancamentos,
@@ -135,13 +147,27 @@ export function caminhoDoArquivo(id: string) {
   return path.join(PASTA, `${id}.xlsx`)
 }
 
+function caminhoGerado(id: string) {
+  return path.join(PASTA, `${id}.gerado.xlsx`)
+}
+
+export function nomeDeDownload(original: string | null) {
+  const base = (original || 'planilha.xlsx').split(/[/\\]/).pop()?.replace(/["\r\n]/g, '') || 'planilha.xlsx'
+  return base.toLowerCase().endsWith('.xlsx') ? base : `${base}.xlsx`
+}
+
 export async function lerArquivoDoProjeto(id: string) {
-  if (supabaseConfigurado()) return baixarPlanilha(id)
+  if (supabaseConfigurado()) {
+    const doBanco = await baixarArquivoBanco(id, 'origem')
+    if (doBanco) return doBanco
+    return baixarPlanilha(id)
+  }
   return readFile(caminhoDoArquivo(id))
 }
 
-export async function gravarArquivoDoProjeto(id: string, buf: Buffer) {
+export async function gravarArquivoDoProjeto(id: string, buf: Buffer, nome: string, ator: string) {
   if (supabaseConfigurado()) {
+    await gravarArquivoBanco(id, 'origem', nome, buf, ator)
     await enviarPlanilha(id, buf)
     return
   }
@@ -149,26 +175,85 @@ export async function gravarArquivoDoProjeto(id: string, buf: Buffer) {
   await writeFile(caminhoDoArquivo(id), buf, { mode: 0o600 })
 }
 
-export async function apagarArquivoDoProjeto(id: string) {
-  if (!/^[\w-]+$/.test(id)) return
+export async function lerArquivoGerado(id: string) {
   if (supabaseConfigurado()) {
-    await removerPlanilha(id)
+    const doBanco = await baixarArquivoBanco(id, 'gerado')
+    if (!doBanco) throw new Error('A planilha gerada não está no banco.')
+    return doBanco
+  }
+  return readFile(caminhoGerado(id))
+}
+
+export async function gravarArquivoGerado(id: string, nome: string, buf: Buffer, ator: string) {
+  if (supabaseConfigurado()) {
+    await gravarArquivoBanco(id, 'gerado', nome, buf, ator)
     return
   }
+  await mkdir(PASTA, { recursive: true })
+  await writeFile(caminhoGerado(id), buf, { mode: 0o600 })
+}
+
+async function apagarSeExistir(caminho: string) {
   try {
-    await unlink(caminhoDoArquivo(id))
+    await unlink(caminho)
   } catch (erro) {
     if ((erro as NodeJS.ErrnoException).code !== 'ENOENT') throw erro
   }
 }
 
-export function aplicarPlanilha(projeto: Projeto, nome: string, lida: PlanilhaLida, ator: string) {
+export async function apagarArquivoGerado(id: string) {
+  if (!/^[\w-]+$/.test(id)) return
+  if (supabaseConfigurado()) {
+    await apagarArquivoBanco(id, 'gerado')
+    return
+  }
+  await apagarSeExistir(caminhoGerado(id))
+}
+
+export async function apagarArquivoDoProjeto(id: string) {
+  if (!/^[\w-]+$/.test(id)) return
+  if (supabaseConfigurado()) {
+    await removerPlanilha(id)
+    await apagarArquivoBanco(id)
+    return
+  }
+  await apagarSeExistir(caminhoDoArquivo(id))
+  await apagarSeExistir(caminhoGerado(id))
+}
+
+export function limparConclusao(projeto: Projeto) {
+  projeto.arquivoGeradoNome = null
+  projeto.concluidoEm = null
+  projeto.concluidoPor = null
+}
+
+export function aplicarPlanilha(
+  projeto: Projeto,
+  nome: string,
+  lida: PlanilhaLida,
+  ator: string,
+  rascunho = false,
+) {
   projeto.arquivoNome = nome
   projeto.capa = lida.capa
-  projeto.status = 'em_preenchimento'
+  projeto.status = rascunho ? 'rascunho' : 'em_preenchimento'
   projeto.lancamentos = {}
+  limparConclusao(projeto)
   projeto.atualizadoEm = new Date().toISOString()
   projeto.atualizadoPor = ator
+}
+
+function completarProjeto(projeto: Projeto): Projeto {
+  return {
+    ...projeto,
+    arquivoNome: projeto.arquivoNome ?? null,
+    arquivoGeradoNome: projeto.arquivoGeradoNome ?? null,
+    concluidoEm: projeto.concluidoEm ?? null,
+    concluidoPor: projeto.concluidoPor ?? null,
+    participantes: projeto.participantes ?? [],
+    lancamentos: projeto.lancamentos ?? {},
+    capa: projeto.capa ?? null,
+  }
 }
 
 export { lancamentoDaLinha } from '@/lib/projetos/lancamento'

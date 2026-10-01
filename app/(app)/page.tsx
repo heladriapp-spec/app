@@ -4,13 +4,8 @@ import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { listarProjetos } from '@/lib/projetos/store'
-import type { Projeto } from '@/lib/projetos/tipos'
+import { STATUS_PROJETO, type Projeto } from '@/lib/projetos/tipos'
 import Link from 'next/link'
-
-const STATUS = {
-  sem_planilha: 'Sem planilha',
-  em_preenchimento: 'Em preenchimento',
-}
 
 export default async function InicioPage({
   searchParams,
@@ -65,8 +60,8 @@ export default async function InicioPage({
                   <Link href={`/projetos/${projeto.id}`} className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="font-medium">{projeto.nome}</span>
                     <span className="text-xs text-muted-foreground">
-                      {dataProjetoBR(projeto.data)} · {STATUS[projeto.status]} ·{' '}
-                      {textoAlteracao(projeto)}
+                      {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]}
+                      {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''} · {textoAlteracao(projeto)}
                     </span>
                   </Link>
                   {usuario.papel === 'administrador' && !confirmando ? (
