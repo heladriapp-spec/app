@@ -1,4 +1,5 @@
 import { carregarPlanilha } from '@/app/actions/projetos'
+import { FormPlanilha } from '@/components/form-planilha'
 import { ArquivoReferencial } from '@/components/arquivo-referencial'
 import { CotacaoTela } from '@/components/cotacao-tela'
 import { RemoverProjeto } from '@/components/remover-projeto'
@@ -109,7 +110,7 @@ export default async function ProjetoPage({
               : 'Este projeto ainda não tem arquivo. A tela de preenchimento abre quando a planilha for carregada.'}
           </p>
           {usuario.papel === 'administrador' ? (
-            <form action={carregarPlanilha} className="mt-4 grid gap-3">
+            <FormPlanilha action={carregarPlanilha} className="mt-4 grid gap-3">
               <input type="hidden" name="id" value={projeto.id} />
               <div className="grid gap-1.5">
                 <Label htmlFor="arquivo">Arquivo .xlsx</Label>
@@ -122,7 +123,7 @@ export default async function ProjetoPage({
                 />
               </div>
               <Button type="submit">Carregar planilha</Button>
-            </form>
+            </FormPlanilha>
           ) : null}
         </div>
       )}

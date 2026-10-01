@@ -1,4 +1,5 @@
 import { criarProjeto } from '@/app/actions/projetos'
+import { FormPlanilha } from '@/components/form-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,7 +30,7 @@ export default async function NovoProjetoPage({
           {erro}
         </p>
       ) : null}
-      <form action={criarProjeto} className="grid gap-4">
+      <FormPlanilha action={criarProjeto} className="grid gap-4">
         <div className="grid gap-1.5">
           <Label htmlFor="nome">Nome</Label>
           <Input id="nome" name="nome" required maxLength={120} />
@@ -47,8 +48,8 @@ export default async function NovoProjetoPage({
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           />
           <p className="text-xs text-muted-foreground">
-            Opcional. O arquivo .xlsx fica guardado com o projeto e é a base da planilha gerada na
-            conclusão.
+            Opcional, até 4 MB. O arquivo .xlsx fica guardado com o projeto e é a base da planilha
+            gerada na conclusão.
           </p>
         </div>
         <div className="flex gap-2">
@@ -65,7 +66,7 @@ export default async function NovoProjetoPage({
             Cancelar
           </Link>
         </div>
-      </form>
+      </FormPlanilha>
     </div>
   )
 }
