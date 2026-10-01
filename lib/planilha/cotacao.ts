@@ -22,6 +22,9 @@ export type ItemCotacao = {
   observacao: string
   temObservacao: boolean
   rotuloValor: string
+  colunaValor: string
+  colunaTotal: string
+  colunaObservacao: string
 }
 
 export type FaseCronograma = {
@@ -103,6 +106,8 @@ function itensDe(grade: Grade, tipo: 'materiais' | 'mao') {
   const status = coluna('status')
   const local = coluna('aplicacao')
   const observacao = coluna('observ')
+  const total = coluna('custo total')
+  const disciplinaCol = coluna('disciplina')
   if (!item || !valor) return []
 
   const itens: ItemCotacao[] = []
@@ -117,10 +122,12 @@ function itensDe(grade: Grade, tipo: 'materiais' | 'mao') {
     if (vistos.has(chave)) chave = `${codigo}:${numero}`
     vistos.add(chave)
     const categoria = textoCelula(grade, numero, grupo)
+    const disciplina = disciplinaCol ? textoCelula(grade, numero, disciplinaCol) : ''
     itens.push({
       codigo: chave,
       linha: numero,
-      grupo: tipo === 'materiais' ? categoria || 'Materiais' : grupoMao(codigo),
+      grupo:
+        tipo === 'materiais' ? categoria || 'Materiais' : disciplina || grupoMao(codigo),
       titulo: nome,
       detalhe: detalhe ? textoCelula(grade, numero, detalhe) : '',
       quantidade: quantidade ? numeroPlanilhaParaTela(textoCelula(grade, numero, quantidade)) : '',
@@ -131,6 +138,9 @@ function itensDe(grade: Grade, tipo: 'materiais' | 'mao') {
       observacao: observacao ? textoCelula(grade, numero, observacao) : '',
       temObservacao: Boolean(observacao),
       rotuloValor: tipo === 'materiais' ? 'Custo unitário (R$)' : 'Valor unitário (R$)',
+      colunaValor: valor,
+      colunaTotal: total,
+      colunaObservacao: observacao,
     })
   }
   return itens

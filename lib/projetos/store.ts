@@ -171,19 +171,7 @@ export function aplicarPlanilha(projeto: Projeto, nome: string, lida: PlanilhaLi
   projeto.atualizadoPor = ator
 }
 
-export function lancamentoDaLinha(
-  projeto: Projeto,
-  linha: number,
-  origem: { quantidade: string; material: string; maoDeObra: string },
-): Lancamento {
-  return (
-    projeto.lancamentos[String(linha)] ?? {
-      quantidade: origem.quantidade,
-      material: origem.material,
-      maoDeObra: origem.maoDeObra,
-    }
-  )
-}
+export { lancamentoDaLinha } from '@/lib/projetos/lancamento'
 
 export async function planilhaDoProjeto(projeto: Projeto) {
   if (!projeto.arquivoNome) return null

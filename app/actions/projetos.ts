@@ -2,7 +2,8 @@
 
 import { requireAdmin, requireUser } from '@/lib/auth/guard'
 import { lerPlanilha } from '@/lib/planilha/ler'
-import { dataHojeISO, lerNumeroBR } from '@/lib/planilha/numeros'
+import { dataHojeISO } from '@/lib/planilha/numeros'
+import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
 import {
   alterarProjetos,
   apagarArquivoDoProjeto,
@@ -12,7 +13,7 @@ import {
   projetoPorId,
 } from '@/lib/projetos/store'
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
-import type { Lancamento, Projeto } from '@/lib/projetos/tipos'
+import type { Projeto } from '@/lib/projetos/tipos'
 import { alterarStore, registrarNo } from '@/lib/operacao/store'
 import { redirect } from 'next/navigation'
 
@@ -166,22 +167,9 @@ export async function salvarPreenchimento(formData: FormData) {
     return
   }
 
-  const lancamentos: Record<string, Lancamento> = {}
-  for (const linha of lida.linhas) {
-    if (linha.grupo) continue
-    const chave = String(linha.linha)
-    const quantidade = String(formData.get(`qtde:${chave}`) ?? '').trim()
-    const material = String(formData.get(`material:${chave}`) ?? '').trim()
-    const maoDeObra = String(formData.get(`mao:${chave}`) ?? '').trim()
-    if (
-      (quantidade && lerNumeroBR(quantidade) == null) ||
-      (material && lerNumeroBR(material) == null) ||
-      (maoDeObra && lerNumeroBR(maoDeObra) == null)
-    ) {
-      voltar(`/projetos/${id}`, 'Use número, com vírgula nos decimais. Exemplo: 11,8.')
-    }
-    lancamentos[chave] = { quantidade, material, maoDeObra }
-  }
+  const lido = lerLancamentosAnexo(formData, lida.linhas)
+  if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
+  const lancamentos = lido.lancamentos
 
   await alterarProjetos((projetos) => {
     const atual = projetos.find((item) => item.id === id)
@@ -209,20 +197,9 @@ async function gravarCotacao(
   formData: FormData,
   cotacao: CotacaoLida,
 ) {
-  const lancamentos: Record<string, Lancamento> = {}
-  for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
-    const valor = String(formData.get(`valor:${item.codigo}`) ?? '').trim()
-    const observacao = item.temObservacao
-      ? String(formData.get(`obs:${item.codigo}`) ?? '').trim()
-      : ''
-    if (valor && lerNumeroBR(valor) == null) {
-      voltar(`/projetos/${id}`, `O valor de ${item.codigo} precisa ser um número. Exemplo: 11,8.`)
-    }
-    if (observacao.length > 2000) {
-      voltar(`/projetos/${id}`, `A observação de ${item.codigo} passa de 2000 caracteres.`)
-    }
-    lancamentos[item.codigo] = { quantidade: '', material: '', maoDeObra: '', valor, observacao }
-  }
+  const lido = lerLancamentosCotacao(formData, cotacao)
+  if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
+  const lancamentos = lido.lancamentos
 
   await alterarProjetos((projetos) => {
     const atual = projetos.find((item) => item.id === id)

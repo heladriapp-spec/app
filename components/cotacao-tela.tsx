@@ -1,30 +1,24 @@
+'use client'
+
 import { salvarPreenchimento } from '@/app/actions/projetos'
-import { buttonVariants } from '@/components/ui/button'
+import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { CotacaoLida, FaseCronograma, ItemCotacao } from '@/lib/planilha/cotacao'
 import { formatarMoedaBR, lerNumeroBR } from '@/lib/planilha/numeros'
 import { cn } from '@/lib/utils'
-import {
-  BookOpen,
-  CalendarRange,
-  ChartPie,
-  ChevronLeft,
-  ChevronRight,
-  HardHat,
-  Package,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 type Valores = Record<string, { valor: string; observacao: string }>
-type PassoId = 'instrucoes' | 'materiais' | 'mao' | 'resumo' | 'cronograma'
 
-type Passo = {
-  id: PassoId
+type Capitulo = {
+  id: string
   nome: string
-  dica: string
-  resumo: string
-  Icon: LucideIcon
+  kicker: string
+  origem: 'leitura' | 'materiais' | 'mao' | 'resumo' | 'cronograma'
+  grupo?: string
 }
 
 const STATUS: Record<string, string> = {
@@ -46,115 +40,160 @@ export function CotacaoTela({
   cotacao: CotacaoLida
   iniciais: Valores
 }) {
-  const passos = montarPassos(cotacao, iniciais)
-  const totais = totaisDe(cotacao, iniciais)
+  const capitulos = montarCapitulos(cotacao)
+  const [valores, setValores] = useState(iniciais)
+  const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
+  const [aviso, setAviso] = useState('')
+  const [baixando, setBaixando] = useState(false)
+  const router = useRouter()
+  const totais = totaisDe(cotacao, valores)
+  const ordem = capitulos.findIndex((item) => item.id === aberto)
+  const atual = capitulos[ordem] ?? capitulos[0]
+  if (!atual) return null
 
-  if (passos.length === 0) return null
+  function alterar(codigo: string, campo: Partial<Valores[string]>) {
+    setValores((prev) => ({
+      ...prev,
+      [codigo]: {
+        valor: prev[codigo]?.valor ?? '',
+        observacao: prev[codigo]?.observacao ?? '',
+        ...campo,
+      },
+    }))
+  }
+
+  async function aoBaixar(form: HTMLFormElement) {
+    setBaixando(true)
+    setAviso('')
+    try {
+      const erro = await baixarPlanilha(form)
+      if (erro) setAviso(erro)
+      else router.refresh()
+    } catch {
+      setAviso('Não foi possível baixar a planilha.')
+    } finally {
+      setBaixando(false)
+    }
+  }
 
   return (
     <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
-      <div className="relative grid items-start gap-2 lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:gap-x-6">
-        {passos.map((item, ordem) => (
-          <input
-            key={item.id}
-            id={`etapa-${item.id}`}
-            type="radio"
-            name="etapa-vista"
-            defaultChecked={ordem === 0}
-            className={cn('sr-only', classeRadio(item.id))}
-          />
-        ))}
-        {passos.map((item, ordem) => {
-          const Icon = item.Icon
-          return (
-            <label
-              key={item.id}
-              htmlFor={`etapa-${item.id}`}
-              className={cn(
-                'flex cursor-pointer items-center gap-2.5 rounded-xl border bg-background px-2.5 py-2 lg:col-start-1',
-                classeLabel(item.id),
-              )}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-current/10">
-                <Icon className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[0.65rem] tracking-wide uppercase opacity-70">
-                  {ordem + 1} de {passos.length}
-                </span>
-                <span className="block truncate text-sm font-medium">{item.nome}</span>
-                <span className="block truncate text-[0.7rem] opacity-70">{item.dica}</span>
-              </span>
-            </label>
-          )
-        })}
-        {passos.map((item, ordem) => {
-          const anterior = ordem > 0 ? passos[ordem - 1] : null
-          const proximo = ordem < passos.length - 1 ? passos[ordem + 1] : null
+      <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <nav className="flex flex-col gap-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
+          <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Capítulos
+          </p>
+          <p className="px-2.5 pb-2 text-[0.7rem] leading-snug text-muted-foreground">
+            Verde, capítulo preenchido. Laranja, ainda falta valor.
+          </p>
+          {capitulos.map((item, indice) => {
+            const estado = capituloPreenchido(item, cotacao, valores)
+            const anterior = indice > 0 ? capitulos[indice - 1] : null
+            const quebra = anterior == null || anterior.kicker !== item.kicker
+            return (
+              <div key={item.id} className="contents">
+                {quebra ? (
+                  <p className="px-2.5 pt-3 pb-1 text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
+                    {item.kicker}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setAberto(item.id)}
+                  className={classeCapitulo(estado, item.id === atual.id)}
+                  aria-current={item.id === atual.id ? 'page' : undefined}
+                >
+                  <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{item.nome}</span>
+                    <span className="block truncate text-[0.7rem] opacity-70">
+                      {dicaCapitulo(item, cotacao, valores)}
+                    </span>
+                  </span>
+                </button>
+              </div>
+            )
+          })}
+        </nav>
+        {capitulos.map((item) => {
+          const indice = capitulos.findIndex((capitulo) => capitulo.id === item.id)
+          const anterior = indice > 0 ? capitulos[indice - 1] : null
+          const proximo = indice < capitulos.length - 1 ? capitulos[indice + 1] : null
+          const itens =
+            item.origem === 'materiais'
+              ? cotacao.materiais.filter((linha) => linha.grupo === item.grupo)
+              : item.origem === 'mao'
+                ? cotacao.maoDeObra.filter((linha) => linha.grupo === item.grupo)
+                : []
+          const subtotal = itens.reduce((acc, linha) => acc + (totais.get(linha.codigo) ?? 0), 0)
           return (
             <section
               key={item.id}
-              className={cn(
-                'hidden min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:row-span-6',
-                classePainel(item.id),
-              )}
+              className={cn('min-w-0 flex-col gap-4', item.id === atual.id ? 'flex' : 'hidden')}
             >
               <div>
                 <p className="text-xs text-muted-foreground">
-                  Etapa {ordem + 1} de {passos.length}
+                  {item.kicker} · {indice + 1} de {capitulos.length}
                 </p>
                 <h2 className="text-lg font-semibold">{item.nome}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{item.resumo}</p>
+                {itens.length > 0 ? (
+                  <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+                    {itens.length} {itens.length === 1 ? 'item' : 'itens'} · {formatarMoedaBR(subtotal)}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">{resumoCapitulo(item)}</p>
+                )}
               </div>
-              {item.id === 'instrucoes' ? <Instrucoes cotacao={cotacao} /> : null}
-              {item.id === 'materiais' ? (
+              {item.origem === 'leitura' ? <Instrucoes cotacao={cotacao} /> : null}
+              {item.origem === 'materiais' || item.origem === 'mao' ? (
                 <>
                   <LegendaPreenchimento />
                   <ListaItens
-                    itens={cotacao.materiais}
-                    origem="materiais"
+                    itens={itens}
+                    origem={item.origem}
                     legenda={cotacao.legenda}
-                    iniciais={iniciais}
+                    valores={valores}
                     totais={totais}
+                    onAlterar={alterar}
                   />
                 </>
               ) : null}
-              {item.id === 'mao' ? (
-                <>
-                  <LegendaPreenchimento />
-                  <ListaItens
-                    itens={cotacao.maoDeObra}
-                    origem="mao"
-                    legenda={cotacao.legenda}
-                    iniciais={iniciais}
-                    totais={totais}
-                  />
-                </>
+              {item.origem === 'resumo' ? (
+                <Resumo cotacao={cotacao} iniciais={valores} totais={totais} />
               ) : null}
-              {item.id === 'resumo' ? (
-                <Resumo cotacao={cotacao} iniciais={iniciais} totais={totais} />
-              ) : null}
-              {item.id === 'cronograma' ? <Cronograma cotacao={cotacao} /> : null}
+              {item.origem === 'cronograma' ? <Cronograma cotacao={cotacao} /> : null}
+              {aviso ? <p className="text-sm text-destructive">{aviso}</p> : null}
               <div className="sticky bottom-0 z-10 -mx-4 mt-2 flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur md:mx-0 md:px-0">
                 {anterior ? (
-                  <label htmlFor={`etapa-${anterior.id}`} className={cn(buttonVariants({ variant: 'outline' }), 'cursor-pointer')}>
+                  <Button type="button" variant="outline" onClick={() => setAberto(anterior.id)}>
                     <ChevronLeft data-icon="inline-start" />
                     {anterior.nome}
-                  </label>
+                  </Button>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Comece pela leitura. O preenchimento vem em seguida.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cada capítulo é uma seção da planilha.
+                  </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" variant={proximo ? 'outline' : 'default'}>
+                  <Button type="submit" variant="outline">
                     Salvar preenchimento
                   </Button>
+                  <Button
+                    type="button"
+                    disabled={baixando}
+                    onClick={(evento) => {
+                      const form = evento.currentTarget.form
+                      if (form) void aoBaixar(form)
+                    }}
+                  >
+                    {baixando ? 'Preparando…' : 'Baixar planilha'}
+                  </Button>
                   {proximo ? (
-                    <label htmlFor={`etapa-${proximo.id}`} className={cn(buttonVariants(), 'cursor-pointer')}>
-                      <proximo.Icon data-icon="inline-start" />
+                    <Button type="button" onClick={() => setAberto(proximo.id)}>
                       {proximo.nome}
                       <ChevronRight data-icon="inline-end" />
-                    </label>
+                    </Button>
                   ) : null}
                 </div>
               </div>
@@ -162,97 +201,62 @@ export function CotacaoTela({
           )
         })}
       </div>
-      <script dangerouslySetInnerHTML={{ __html: SCRIPT_TOTAIS }} />
     </form>
   )
 }
 
-function classeRadio(id: PassoId) {
-  if (id === 'instrucoes') return 'peer/instrucoes'
-  if (id === 'materiais') return 'peer/materiais'
-  if (id === 'mao') return 'peer/mao'
-  if (id === 'resumo') return 'peer/resumo'
-  return 'peer/cronograma'
+function classeCapitulo(preenchido: boolean | null, ativo: boolean) {
+  return cn(
+    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left',
+    preenchido === true && 'border-emerald-400 bg-emerald-50 text-emerald-950',
+    preenchido === false && 'border-amber-400 bg-amber-50 text-amber-950',
+    preenchido === null && 'border-border bg-background',
+    ativo && 'ring-2 ring-foreground',
+  )
 }
 
-function classeLabel(id: PassoId) {
-  if (id === 'instrucoes') {
-    return 'peer-checked/instrucoes:border-foreground peer-checked/instrucoes:bg-foreground peer-checked/instrucoes:text-background'
+function montarCapitulos(cotacao: CotacaoLida): Capitulo[] {
+  const lista: Capitulo[] = []
+  if (cotacao.orientacoes.length > 0 || cotacao.legenda.length > 0 || cotacao.preenchimento) {
+    lista.push({ id: 'instrucoes', nome: 'Instruções', kicker: 'Leitura', origem: 'leitura' })
   }
-  if (id === 'materiais') {
-    return 'peer-checked/materiais:border-foreground peer-checked/materiais:bg-foreground peer-checked/materiais:text-background'
-  }
-  if (id === 'mao') {
-    return 'peer-checked/mao:border-foreground peer-checked/mao:bg-foreground peer-checked/mao:text-background'
-  }
-  if (id === 'resumo') {
-    return 'peer-checked/resumo:border-foreground peer-checked/resumo:bg-foreground peer-checked/resumo:text-background'
-  }
-  return 'peer-checked/cronograma:border-foreground peer-checked/cronograma:bg-foreground peer-checked/cronograma:text-background'
-}
-
-function classePainel(id: PassoId) {
-  if (id === 'instrucoes') return 'peer-checked/instrucoes:flex'
-  if (id === 'materiais') return 'peer-checked/materiais:flex'
-  if (id === 'mao') return 'peer-checked/mao:flex'
-  if (id === 'resumo') return 'peer-checked/resumo:flex'
-  return 'peer-checked/cronograma:flex'
-}
-
-function montarPassos(cotacao: CotacaoLida, campos: Valores): Passo[] {
-  const passos: Passo[] = []
-  const faltam = (itens: ItemCotacao[]) =>
-    itens.filter((item) => !(campos[item.codigo]?.valor ?? '').trim()).length
-
-  if (cotacao.orientacoes.length > 0 || cotacao.legenda.length > 0) {
-    passos.push({
-      id: 'instrucoes',
-      nome: 'Instruções',
-      dica: 'Leia antes',
-      resumo: 'O que a planilha explica antes de pedir valor: orientação, legenda e o que cada status significa.',
-      Icon: BookOpen,
-    })
-  }
-  if (cotacao.materiais.length > 0) {
-    const vazios = faltam(cotacao.materiais)
-    passos.push({
-      id: 'materiais',
-      nome: 'Materiais',
-      dica: vazios > 0 ? `${vazios} sem valor` : `${cotacao.materiais.length} itens`,
-      resumo:
-        'Cada card é uma linha da aba Cotação de Materiais. A especificação, a quantidade e o local são informação. O custo unitário e a observação são o que se preenche.',
-      Icon: Package,
-    })
-  }
-  if (cotacao.maoDeObra.length > 0) {
-    const vazios = faltam(cotacao.maoDeObra)
-    passos.push({
-      id: 'mao',
-      nome: 'Mão de obra',
-      dica: vazios > 0 ? `${vazios} sem valor` : `${cotacao.maoDeObra.length} itens`,
-      resumo:
-        'Serviços, logística e responsabilidade técnica da aba Mão de Obra. Informe o valor unitário. O total da linha é calculado.',
-      Icon: HardHat,
-    })
-  }
-  passos.push({
-    id: 'resumo',
-    nome: 'Resumo',
-    dica: 'Calculado',
-    resumo:
-      'Totais por disciplina, como a aba Resumo. Nada se digita aqui: o número acompanha o que foi preenchido nas etapas anteriores.',
-    Icon: ChartPie,
+  gruposDe(cotacao.materiais).forEach((grupo, indice) => {
+    lista.push({ id: `mat-${indice}`, nome: grupo, kicker: 'Materiais', origem: 'materiais', grupo })
   })
+  gruposDe(cotacao.maoDeObra).forEach((grupo, indice) => {
+    lista.push({ id: `srv-${indice}`, nome: grupo, kicker: 'Serviços', origem: 'mao', grupo })
+  })
+  lista.push({ id: 'resumo', nome: 'Resumo', kicker: 'Calculado', origem: 'resumo' })
   if (cotacao.fases.length > 0) {
-    passos.push({
-      id: 'cronograma',
-      nome: 'Cronograma',
-      dica: 'Consulta',
-      resumo: 'Fases, datas e equipe que a planilha traz para situar o serviço. Esta etapa é leitura.',
-      Icon: CalendarRange,
-    })
+    lista.push({ id: 'cronograma', nome: 'Cronograma', kicker: 'Leitura', origem: 'cronograma' })
   }
-  return passos
+  return lista
+}
+
+function capituloPreenchido(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
+  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return null
+  const fonte = capitulo.origem === 'materiais' ? cotacao.materiais : cotacao.maoDeObra
+  const itens = fonte.filter((item) => item.grupo === capitulo.grupo)
+  if (itens.length === 0) return null
+  return itens.every((item) => (valores[item.codigo]?.valor ?? '').trim().length > 0)
+}
+
+function dicaCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
+  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return capitulo.kicker
+  const fonte = capitulo.origem === 'materiais' ? cotacao.materiais : cotacao.maoDeObra
+  const itens = fonte.filter((item) => item.grupo === capitulo.grupo)
+  const faltam = itens.filter((item) => !(valores[item.codigo]?.valor ?? '').trim()).length
+  if (faltam === 0) return `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · preenchido`
+  return `${faltam} sem valor`
+}
+
+function resumoCapitulo(capitulo: Capitulo) {
+  if (capitulo.origem === 'leitura' && capitulo.id === 'instrucoes') {
+    return 'O que a planilha explica antes de pedir valor.'
+  }
+  if (capitulo.origem === 'resumo') return 'Totais calculados a partir do que foi preenchido.'
+  if (capitulo.origem === 'cronograma') return 'Fases, datas e equipe. Esta parte é leitura.'
+  return ''
 }
 
 function Instrucoes({ cotacao }: { cotacao: CotacaoLida }) {
@@ -313,47 +317,32 @@ function ListaItens({
   itens,
   origem,
   legenda,
-  iniciais,
+  valores,
   totais,
+  onAlterar,
 }: {
   itens: ItemCotacao[]
   origem: 'materiais' | 'mao'
   legenda: CotacaoLida['legenda']
-  iniciais: Valores
+  valores: Valores
   totais: Map<string, number | null>
+  onAlterar: (codigo: string, campo: Partial<Valores[string]>) => void
 }) {
-  const grupos = gruposDe(itens)
   const significados = new Map(legenda.map((item) => [item.status, item.texto]))
   return (
-    <div className="flex flex-col gap-5">
-      {grupos.map((grupo) => {
-        const doGrupo = itens.filter((item) => item.grupo === grupo)
-        const subtotal = doGrupo.reduce((acc, item) => acc + (totais.get(item.codigo) ?? 0), 0)
-        return (
-          <section key={grupo} className="flex flex-col gap-3">
-            <header className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-sm font-medium">{grupo}</h3>
-              <p className="text-xs text-muted-foreground tabular-nums">
-                {doGrupo.length} {doGrupo.length === 1 ? 'item' : 'itens'} ·{' '}
-                <span data-subtotal={grupo}>{formatarMoedaBR(subtotal)}</span>
-              </p>
-            </header>
-            <div className="grid gap-3 xl:grid-cols-2">
-              {doGrupo.map((item) => (
-                <ItemCard
-                  key={item.codigo}
-                  item={item}
-                  origem={origem}
-                  valor={iniciais[item.codigo]?.valor ?? ''}
-                  observacao={iniciais[item.codigo]?.observacao ?? ''}
-                  total={totais.get(item.codigo) ?? null}
-                  significado={significados.get(item.status) ?? ''}
-                />
-              ))}
-            </div>
-          </section>
-        )
-      })}
+    <div className="grid gap-3 xl:grid-cols-2">
+      {itens.map((item) => (
+        <ItemCard
+          key={item.codigo}
+          item={item}
+          origem={origem}
+          valor={valores[item.codigo]?.valor ?? ''}
+          observacao={valores[item.codigo]?.observacao ?? ''}
+          total={totais.get(item.codigo) ?? null}
+          significado={significados.get(item.status) ?? ''}
+          onAlterar={onAlterar}
+        />
+      ))}
     </div>
   )
 }
@@ -365,6 +354,7 @@ function ItemCard({
   observacao,
   total,
   significado,
+  onAlterar,
 }: {
   item: ItemCotacao
   origem: 'materiais' | 'mao'
@@ -372,14 +362,13 @@ function ItemCard({
   observacao: string
   total: number | null
   significado: string
+  onAlterar: (codigo: string, campo: Partial<Valores[string]>) => void
 }) {
   const valorId = `valor-${item.codigo}`
   const obsId = `obs-${item.codigo}`
   return (
     <article
       id={`item-${item.codigo}`}
-      data-qtde={item.quantidade}
-      data-grupo={item.grupo}
       data-origem={origem}
       className="flex flex-col gap-3 rounded-xl border p-4"
     >
@@ -412,7 +401,8 @@ function ItemCard({
           <Input
             id={valorId}
             name={`valor:${item.codigo}`}
-            defaultValue={valor}
+            value={valor}
+            onChange={(evento) => onAlterar(item.codigo, { valor: evento.target.value })}
             inputMode="decimal"
             autoComplete="off"
             aria-label={`${item.rotuloValor} de ${item.codigo}`}
@@ -438,7 +428,8 @@ function ItemCard({
           <textarea
             id={obsId}
             name={`obs:${item.codigo}`}
-            defaultValue={observacao}
+            value={observacao}
+            onChange={(evento) => onAlterar(item.codigo, { observacao: evento.target.value })}
             rows={3}
             maxLength={2000}
             aria-label={`Observações de ${item.codigo}`}
@@ -626,62 +617,6 @@ function gruposDe(itens: ItemCotacao[]) {
   }
   return grupos
 }
-
-const SCRIPT_TOTAIS = `
-function lerNumero(texto) {
-  texto = String(texto || '').trim()
-  if (!texto) return null
-  if (!/^\\d{1,3}(\\.\\d{3})*(,\\d+)?$|^\\d+(,\\d+)?$/.test(texto)) return null
-  var normal = texto.indexOf(',') >= 0 ? texto.replace(/\\./g, '').replace(',', '.') : texto
-  var valor = Number(normal)
-  return Number.isFinite(valor) ? valor : null
-}
-function moeda(valor) {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-function atualizarTotais() {
-  var grupos = {}
-  var materiais = 0
-  var mao = 0
-  document.querySelectorAll('article[data-qtde]').forEach(function (artigo) {
-    var qtde = lerNumero(artigo.getAttribute('data-qtde'))
-    var campo = artigo.querySelector('input[name^="valor:"]')
-    var unitario = campo ? lerNumero(campo.value) : null
-    var total = qtde == null || unitario == null ? null : Math.round((qtde * unitario + Number.EPSILON) * 100) / 100
-    var alvo = artigo.querySelector('[data-total]')
-    if (alvo) alvo.textContent = total == null ? '—' : moeda(total)
-    var grupo = artigo.getAttribute('data-grupo') || ''
-    var numero = total == null ? 0 : total
-    if (artigo.getAttribute('data-origem') === 'materiais') {
-      materiais += numero
-      grupos[grupo] = (grupos[grupo] || 0) + numero
-    } else {
-      mao += numero
-    }
-  })
-  document.querySelectorAll('[data-subtotal]').forEach(function (el) {
-    var grupo = el.getAttribute('data-subtotal')
-    if (grupo && grupos[grupo] != null) el.textContent = moeda(grupos[grupo])
-  })
-  document.querySelectorAll('[data-resumo]').forEach(function (el) {
-    var chave = el.getAttribute('data-resumo')
-    if (chave && grupos[chave] != null) el.textContent = moeda(grupos[chave])
-  })
-  document.querySelectorAll('[data-percent]').forEach(function (el) {
-    var chave = el.getAttribute('data-percent')
-    var valor = chave ? grupos[chave] : null
-    el.textContent = materiais > 0 && valor != null ? ((valor / materiais) * 100).toFixed(1).replace('.', ',') + '%' : '—'
-  })
-  var geral = materiais + mao
-  var mapa = { geral: moeda(geral), materiais: moeda(materiais), mao: moeda(mao), 'materiais-tabela': moeda(materiais), 'mao-tabela': moeda(mao), 'geral-tabela': moeda(geral) }
-  Object.keys(mapa).forEach(function (chave) {
-    document.querySelectorAll('[data-resumo="' + chave + '"]').forEach(function (el) {
-      el.textContent = mapa[chave]
-    })
-  })
-}
-document.addEventListener('input', atualizarTotais)
-`
 
 function totaisDe(cotacao: CotacaoLida, iniciais: Valores) {
   const porItem = new Map<string, number | null>()

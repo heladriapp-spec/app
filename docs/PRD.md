@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.3.0 — o administrador cria a conta, define a senha, troca a senha e exclui o usuário. Quem foi aprovado e ainda não entrou fica visível, com reenvio da confirmação. Esse reenvio não alcança a caixa: o remetente ainda não foi escolhido e a aprovação não envia e-mail. Concluir e baixar o arquivo fiel é o passo seguinte da planilha.  
+**Status:** 0.4.0 — o preenchimento da planilha abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada e as fórmulas no lugar. Concluir, excluir linha e o histórico de versões continuam na fila.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -142,7 +142,7 @@ A planilha destrinchada é a tela de trabalho. Cada linha que pede número vira 
 - Valor, editável, quando a planilha espera valor. Nesse Anexo III são dois: preço unitário de material e preço unitário de mão de obra (seção 7).
 - Total da linha, quando a planilha já calcula ou quando quantidade × valor for o que aquela célula representa. Se a célula de total for fórmula no arquivo original, o sistema não substitui a fórmula por um número colado: deixa a fórmula e preenche só as entradas.
 
-Agrupar itens pela aba ou pelo bloco da planilha.
+Agrupar itens pela aba ou pelo bloco da planilha. Na tela, cada seção vira um capítulo no índice à esquerda. O capítulo com todos os valores preenchidos fica com fundo verde. O capítulo que ainda tem valor em falta fica com contorno laranja. Clicar no capítulo abre só o formulário daquela seção.
 
 Salvar durante o preenchimento, sem exigir que a planilha inteira esteja completa. O que uma pessoa gravou, as outras veem no mesmo projeto.
 
