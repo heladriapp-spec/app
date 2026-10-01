@@ -9,12 +9,22 @@ export const STATUS_PROJETO: Record<StatusProjeto, string> = {
   concluido: 'Concluído',
 }
 
+/** Acréscimo interno de um item de serviço. Não sai na planilha. */
+export type ExtraServico = {
+  id: string
+  reais: number | null
+  percentual: number | null
+}
+
 export type Lancamento = {
   quantidade: string
   material: string
   maoDeObra: string
   valor?: string
   observacao?: string
+  /** Valor antes dos extras. Permanece quando o campo visível passa a mostrar o final. */
+  valorBase?: string
+  extras?: ExtraServico[]
 }
 
 export type Projeto = {

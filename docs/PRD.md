@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.4.0 — o preenchimento da planilha abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada e as fórmulas no lugar. Concluir, excluir linha e o histórico de versões continuam na fila.  
+**Status:** 0.6.0 — o preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final, sem percentual, margem ou menção ao extra. Concluir, excluir linha e o histórico de versões continuam na fila.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -144,6 +144,8 @@ A planilha destrinchada é a tela de trabalho. Cada linha que pede número vira 
 
 Agrupar itens pela aba ou pelo bloco da planilha. Na tela, cada seção vira um capítulo no índice à esquerda. O capítulo com todos os valores preenchidos fica com fundo verde. O capítulo que ainda tem valor em falta fica com contorno laranja. Clicar no capítulo abre só o formulário daquela seção.
 
+No item de serviço da cotação, o valor unitário pode receber um extra interno. A regra está na seção 6.8. Material não tem esse controle.
+
 Salvar durante o preenchimento, sem exigir que a planilha inteira esteja completa. O que uma pessoa gravou, as outras veem no mesmo projeto.
 
 ### 6.5 Excluir item
@@ -169,6 +171,8 @@ O arquivo gerado:
 - tem a mesma extensão do enviado;
 - mantém abas, cabeçalhos, mesclas e formatação das partes que ninguém excluiu;
 - traz quantidade e valor nas células correspondentes;
+- no item de serviço com extra, a célula de valor recebe só o valor final já calculado;
+- não traz coluna, observação, comentário, percentual, margem nem qualquer texto sobre extra;
 - não traz a linha de um item excluído.
 
 O nome sugerido do download identifica o projeto e a versão, sem trocar a extensão.
@@ -192,6 +196,30 @@ Eventos mínimos:
 Cada um desses eventos gera uma versão numerada do estado da planilha (valores preenchidos e itens excluídos). Dá para abrir a lista de versões e ver, entre uma versão e a anterior, o que mudou.
 
 A versão atual é a que o botão Concluir e baixar usa. Uma versão antiga pode ser consultada. Restaurar uma versão antiga é ação do administrador: o estado atual passa a ser o daquela versão, e a restauração entra no histórico como versão nova. O histórico anterior não é reescrito.
+
+### 6.8 Extra no item de serviço
+
+Ferramenta interna de composição de preço. Vale só para o item de serviço (mão de obra, logística e as demais categorias dessa aba: pintura, acabamento, marcenaria, serralheria, comunicação visual e as outras que a planilha trouxer). Material não entra. Não é o motor da seção 14: a pessoa informa o acréscimo, o sistema não pesquisa preço.
+
+Cada item tem o próprio extra. Ele é opcional. Um item pode ter vários. O valor base digitado ou vindo da planilha permanece guardado. O extra não substitui esse base.
+
+Na linha do serviço há um botão **+**, com o nome Extra. Ao clicar, abre uma área de simulação daquele item: à direita, quando o cartão tem espaço; abaixo, quando não tem. A área tem borda tracejada, de rascunho. Dentro:
+
+- o valor base atual;
+- Extra em R$, no formato `R$ 0,00`, só número;
+- Extra em %, no formato `0,00%`, só número;
+- a prévia do valor final;
+- **Aplicar** e **Cancelar**.
+
+Dá para informar só reais, só percentual, ou os dois no mesmo extra. O percentual incide sempre sobre o valor base, nunca sobre um valor que já recebeu outro extra. Exemplo: base `R$ 100,00`, extra de `R$ 20,00` e extra de `10%` resultam em `R$ 130,00` (`100 + 20 + 10`). Dois percentuais, `10%` e `20%`, resultam em `R$ 130,00`, não em `R$ 132,00`.
+
+Enquanto a pessoa preenche, o valor principal do formulário não muda. A tela só mostra a prévia. **Aplicar** passa o valor final a valer naquele item: totais, capítulo e o que será gravado. **Cancelar** descarta o rascunho.
+
+Cada extra aplicado aparece compacto na linha, com lixeira. A lixeira tira só aquele extra e recalcula o final. Sem nenhum extra, o item volta ao valor base.
+
+Um ponto discreto ao lado do **+** indica que o item tem extra. O campo de valor, nesse caso, mostra o final e não se edita por cima: a edição do base volta quando os extras saem.
+
+Na planilha exportada, a célula original do valor do serviço recebe somente esse final. Exemplo: base `R$ 100,00`, extras `R$ 20,00` e `10%`, célula com `R$ 130,00`. Não há outra célula, nem texto, explicando a conta.
 
 ## 7. Fidelidade do arquivo
 
@@ -232,6 +260,7 @@ Campo de preço vazio no original está gravado como zero. Na tela, zero ainda n
 
 - Um projeto tem um arquivo de origem. Substituir o arquivo é outro ato, explícito. Na primeira versão, trocar o arquivo abre uma versão nova e o preenchimento anterior permanece consultável no histórico.
 - Quantidade e valor aceitam número com decimal no padrão brasileiro (vírgula) na tela. No arquivo, gravam no formato numérico que a planilha já usa.
+- Extra de serviço é dado interno do preenchimento. A exportação usa o valor final e não grava o base, o percentual nem a lista de extras.
 - Campo vazio permanece vazio no arquivo. Não gravar zero no lugar de “ainda não preenchido”.
 - Usuário inativo perde o acesso na hora. O rastro do que ele fez permanece.
 - Usuário comum não cria projeto, não apaga linha e não abre o portal administrativo, mesmo que conheça o endereço da tela. A recusa é no servidor, não só escondendo o botão.
@@ -352,6 +381,8 @@ A planilha oficial do SESC continua um arquivo de entrada e saída fiel. A refer
 ## 13. Próximos passos da esteira
 
 A ordem abaixo é a fila que o portal mostra em Implantações e na Esteira, depois da operação 0.1.0. Aprovar uma entrega libera desenvolver aquele passo. Não publica sozinho e não cria conta de serviço.
+
+O extra no item de serviço (seção 6.8) já estava aprovado e passou à frente de Git, Supabase, e-mail e Vercel. Entrou nesta versão, 0.6.0. A fila seguinte continua no repositório e na nuvem.
 
 O corte razoável do MVP, antes de Git, Supabase, e-mail e Vercel, é ver a planilha funcionar nesta máquina:
 

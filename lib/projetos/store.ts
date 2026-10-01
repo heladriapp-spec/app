@@ -1,6 +1,6 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
-import type { Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
+import type { ExtraServico, Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
 import {
   apagarArquivoBanco,
   apagarFora,
@@ -265,12 +265,17 @@ export async function planilhaDoProjeto(projeto: Projeto) {
 }
 
 export function valoresDaCotacao(projeto: Projeto, cotacao: CotacaoLida) {
-  const iniciais: Record<string, { valor: string; observacao: string }> = {}
+  const iniciais: Record<string, { valor: string; observacao: string; valorBase: string; extras: ExtraServico[] }> = {}
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
     const salvo = projeto.lancamentos[item.codigo]
     iniciais[item.codigo] = salvo
-      ? { valor: salvo.valor ?? '', observacao: salvo.observacao ?? '' }
-      : { valor: item.valor, observacao: item.observacao }
+      ? {
+          valor: salvo.valor ?? '',
+          observacao: salvo.observacao ?? '',
+          valorBase: salvo.valorBase ?? '',
+          extras: salvo.extras ?? [],
+        }
+      : { valor: item.valor, observacao: item.observacao, valorBase: '', extras: [] }
   }
   return iniciais
 }

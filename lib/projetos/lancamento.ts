@@ -14,8 +14,17 @@ export function lancamentosIguais(
     if (texto(antes.maoDeObra) !== texto(depois.maoDeObra)) return false
     if (texto(antes.valor) !== texto(depois.valor)) return false
     if (texto(antes.observacao) !== texto(depois.observacao)) return false
+    if (texto(antes.valorBase) !== texto(depois.valorBase)) return false
+    if (extrasTexto(antes.extras) !== extrasTexto(depois.extras)) return false
   }
   return true
+}
+
+function extrasTexto(extras: { id: string; reais: number | null; percentual: number | null }[] | undefined) {
+  if (!extras?.length) return ''
+  return JSON.stringify(
+    extras.map((item) => ({ id: item.id, reais: item.reais, percentual: item.percentual })),
+  )
 }
 
 function texto(valor: string | undefined) {

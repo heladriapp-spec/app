@@ -77,12 +77,26 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     areas: ['planilha', 'ui'],
   },
   {
+    id: 'extra-servico',
+    nome: 'Extra no item de serviço',
+    resumo:
+      'No serviço, um extra opcional compõe o preço na tela, em reais, percentual ou os dois, sempre sobre o valor base. A planilha exportada grava só o valor final, sem o cálculo.',
+    tipo: 'nova_funcionalidade',
+    versaoPrevista: '0.6.0',
+    versaoEfetiva: '0.6.0',
+    statusBase: 'nesta_versao',
+    implantado: true,
+    ordemPrioridade: 25,
+    dependsOn: ['preenchimento'],
+    areas: ['planilha', 'ui'],
+  },
+  {
     id: 'git-proprio',
     nome: 'Repositório Git só do Heladri',
     resumo:
       'Versionar este portal num remoto que a publicação consiga ligar. Não trava o corte da planilha na máquina.',
     tipo: 'melhoria',
-    versaoPrevista: '0.6.0',
+    versaoPrevista: '0.7.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -96,7 +110,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Usuários, pedidos, projetos e a planilha de origem passam do arquivo local para o Postgres e o Storage. A chave fica fora do Git.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '0.7.0',
+    versaoPrevista: '0.8.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -110,7 +124,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Aprovar um pedido passa a enviar o link de uso único. Esqueci a senha usa o mesmo remetente. Até lá o administrador cria a conta na mão. Contas da instalação continuam sem e-mail.',
     tipo: 'melhoria',
-    versaoPrevista: '0.8.0',
+    versaoPrevista: '0.9.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
@@ -124,7 +138,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'O primeiro deploy espera o fluxo local de pé. O seguinte sai do Git, no plano gratuito, sem banco da Vercel.',
     tipo: 'melhoria',
-    versaoPrevista: '0.9.0',
+    versaoPrevista: '0.10.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,

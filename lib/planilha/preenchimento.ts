@@ -1,4 +1,5 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
+import { lerExtras, valorExportado } from '@/lib/planilha/extra'
 import type { LinhaPlanilha } from '@/lib/planilha/ler'
 import { lerNumeroBR } from '@/lib/planilha/numeros'
 import type { Lancamento } from '@/lib/projetos/tipos'
@@ -7,6 +8,7 @@ export function lerLancamentosCotacao(
   formData: FormData,
   cotacao: CotacaoLida,
 ): { ok: true; lancamentos: Record<string, Lancamento> } | { ok: false; erro: string } {
+  const servicos = new Set(cotacao.maoDeObra.map((item) => item.codigo))
   const lancamentos: Record<string, Lancamento> = {}
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
     const valor = String(formData.get(`valor:${item.codigo}`) ?? '').trim()
@@ -17,7 +19,24 @@ export function lerLancamentosCotacao(
     if (observacao.length > 2000) {
       return { ok: false, erro: `A observação de ${item.codigo} passa de 2000 caracteres.` }
     }
-    lancamentos[item.codigo] = { quantidade: '', material: '', maoDeObra: '', valor, observacao }
+    const lancamento: Lancamento = { quantidade: '', material: '', maoDeObra: '', valor, observacao }
+    if (servicos.has(item.codigo)) {
+      const extras = lerExtras(String(formData.get(`extras:${item.codigo}`) ?? ''))
+      if (!extras.ok) {
+        return { ok: false, erro: `O extra de ${item.codigo} não pôde ser lido.` }
+      }
+      if (extras.extras.length > 0) {
+        const valorBase = String(formData.get(`base:${item.codigo}`) ?? '').trim()
+        const base = lerNumeroBR(valorBase)
+        if (base == null) {
+          return { ok: false, erro: `O valor base de ${item.codigo} precisa ser um número.` }
+        }
+        lancamento.valorBase = valorBase
+        lancamento.extras = extras.extras
+        lancamento.valor = valorExportado(base, extras.extras)
+      }
+    }
+    lancamentos[item.codigo] = lancamento
   }
   return { ok: true, lancamentos }
 }

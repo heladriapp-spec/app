@@ -7,13 +7,28 @@ import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { CotacaoLida, FaseCronograma, ItemCotacao } from '@/lib/planilha/cotacao'
-import { formatarMoedaBR, lerNumeroBR } from '@/lib/planilha/numeros'
+import {
+  mascaraMoeda,
+  mascaraPercentual,
+  rascunhoExtra,
+  rotuloExtra,
+  valorFinalServico,
+} from '@/lib/planilha/extra'
+import { formatarMoedaBR, formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
+import type { ExtraServico } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-type Valores = Record<string, { valor: string; observacao: string }>
+type ValorItem = {
+  valor: string
+  observacao: string
+  valorBase: string
+  extras: ExtraServico[]
+}
+
+type Valores = Record<string, ValorItem>
 
 type Capitulo = {
   id: string
@@ -56,12 +71,14 @@ export function CotacaoTela({
   const atual = capitulos[ordem] ?? capitulos[0]
   if (!atual) return null
 
-  function alterar(codigo: string, campo: Partial<Valores[string]>) {
+  function alterar(codigo: string, campo: Partial<ValorItem>) {
     setValores((prev) => ({
       ...prev,
       [codigo]: {
         valor: prev[codigo]?.valor ?? '',
         observacao: prev[codigo]?.observacao ?? '',
+        valorBase: prev[codigo]?.valorBase ?? '',
+        extras: prev[codigo]?.extras ?? [],
         ...campo,
       },
     }))
@@ -340,7 +357,7 @@ function ListaItens({
   legenda: CotacaoLida['legenda']
   valores: Valores
   totais: Map<string, number | null>
-  onAlterar: (codigo: string, campo: Partial<Valores[string]>) => void
+  onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
 }) {
   const significados = new Map(legenda.map((item) => [item.status, item.texto]))
   return (
@@ -351,6 +368,8 @@ function ListaItens({
           item={item}
           origem={origem}
           valor={valores[item.codigo]?.valor ?? ''}
+          valorBase={valores[item.codigo]?.valorBase ?? ''}
+          extras={valores[item.codigo]?.extras ?? []}
           observacao={valores[item.codigo]?.observacao ?? ''}
           total={totais.get(item.codigo) ?? null}
           significado={significados.get(item.status) ?? ''}
@@ -365,6 +384,8 @@ function ItemCard({
   item,
   origem,
   valor,
+  valorBase,
+  extras,
   observacao,
   total,
   significado,
@@ -373,86 +394,301 @@ function ItemCard({
   item: ItemCotacao
   origem: 'materiais' | 'mao'
   valor: string
+  valorBase: string
+  extras: ExtraServico[]
   observacao: string
   total: number | null
   significado: string
-  onAlterar: (codigo: string, campo: Partial<Valores[string]>) => void
+  onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
 }) {
   const valorId = `valor-${item.codigo}`
   const obsId = `obs-${item.codigo}`
+  const servico = origem === 'mao'
+  const [painel, setPainel] = useState(false)
+  const [reais, setReais] = useState('')
+  const [percentual, setPercentual] = useState('')
+  const baseTexto = extras.length > 0 ? valorBase : valor.trim()
+  const base = lerNumeroBR(baseTexto)
+  const painelId = `extra-${item.codigo}`
+
+  function fecharPainel() {
+    setPainel(false)
+    setReais('')
+    setPercentual('')
+  }
+
+  function aplicar() {
+    if (base == null) return
+    const extra = rascunhoExtra(crypto.randomUUID(), reais, percentual)
+    if (!extra) return
+    const lista = [...extras, extra]
+    onAlterar(item.codigo, {
+      valorBase: baseTexto,
+      extras: lista,
+      valor: formatarNumeroBR(valorFinalServico(base, lista)),
+    })
+    fecharPainel()
+  }
+
+  function remover(id: string) {
+    const lista = extras.filter((extra) => extra.id !== id)
+    const baseNumero = lerNumeroBR(valorBase)
+    if (lista.length === 0) {
+      onAlterar(item.codigo, { extras: [], valorBase: '', valor: valorBase || valor })
+      return
+    }
+    if (baseNumero == null) {
+      onAlterar(item.codigo, { extras: lista })
+      return
+    }
+    onAlterar(item.codigo, {
+      extras: lista,
+      valor: formatarNumeroBR(valorFinalServico(baseNumero, lista)),
+    })
+  }
+
   return (
     <article
       id={`item-${item.codigo}`}
       data-origem={origem}
-      className="flex flex-col gap-3 rounded-xl border p-4"
+      className="@container flex flex-col gap-3 rounded-xl border p-4"
     >
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{item.codigo}</p>
-          <h4 className="font-medium leading-snug">{item.titulo}</h4>
+      <div
+        className={cn(
+          'flex min-w-0 flex-col gap-3',
+          painel && '@min-[32rem]:flex-row @min-[32rem]:items-start',
+        )}
+      >
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <header className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{item.codigo}</p>
+              <h4 className="font-medium leading-snug">{item.titulo}</h4>
+            </div>
+            {item.status ? <StatusBadge status={item.status} titulo={significado} /> : null}
+          </header>
+          {item.detalhe ? <p className="text-sm leading-relaxed text-muted-foreground">{item.detalhe}</p> : null}
+          {item.local ? (
+            <p className="text-sm leading-relaxed">
+              <span className="text-muted-foreground">Onde entra: </span>
+              {item.local}
+            </p>
+          ) : null}
+          <p className="text-sm">
+            <span className="text-muted-foreground">Quantidade: </span>
+            <span className="font-medium tabular-nums">
+              {item.quantidade || '—'}
+              {item.unidade ? ` ${item.unidade}` : ''}
+            </span>
+          </p>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:items-end">
+            <div className="grid gap-1">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor={valorId} className="text-sm font-medium">
+                  {item.rotuloValor}
+                </label>
+                {servico ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    {extras.length > 0 ? (
+                      <span
+                        className="size-1.5 rounded-full bg-amber-500"
+                        title="Extra aplicado"
+                        aria-label="Extra aplicado"
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-xs"
+                      aria-expanded={painel}
+                      aria-controls={painelId}
+                      aria-label="Extra"
+                      title="Extra"
+                      onClick={() => (painel ? fecharPainel() : setPainel(true))}
+                    >
+                      <Plus />
+                    </Button>
+                  </span>
+                ) : null}
+              </div>
+              <Input
+                id={valorId}
+                name={`valor:${item.codigo}`}
+                value={valor}
+                onChange={(evento) => onAlterar(item.codigo, { valor: evento.target.value })}
+                readOnly={extras.length > 0}
+                inputMode="decimal"
+                autoComplete="off"
+                aria-label={`${item.rotuloValor} de ${item.codigo}`}
+                placeholder="0,00"
+                className="border-sky-200 bg-sky-50/80 text-right read-only:bg-muted/50 focus-visible:border-sky-400 focus-visible:ring-sky-200"
+              />
+              <p className="text-xs text-muted-foreground">
+                {extras.length > 0
+                  ? 'Este valor inclui extra. Remova os extras para voltar ao valor base.'
+                  : item.unidade
+                    ? `Preço por ${item.unidade}.`
+                    : 'Preço da unidade desta linha.'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-muted px-3 py-2 text-right">
+              <p className="text-[0.7rem] text-muted-foreground">Total da linha</p>
+              <p className="font-medium tabular-nums" data-total>
+                {total == null ? '—' : formatarMoedaBR(total)}
+              </p>
+            </div>
+          </div>
+          {servico && extras.length > 0 ? (
+            <ul className="flex flex-col gap-1">
+              {extras.map((extra) => {
+                const rotulo = rotuloExtra(extra)
+                return (
+                  <li
+                    key={extra.id}
+                    className="flex items-center justify-between gap-2 rounded-md bg-muted/70 px-2 py-1 text-xs"
+                  >
+                    <span className="tabular-nums">Extra: + {rotulo}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Remover extra ${rotulo}`}
+                      onClick={() => remover(extra.id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+          {servico ? (
+            <>
+              <input type="hidden" name={`base:${item.codigo}`} value={valorBase} />
+              <input
+                type="hidden"
+                name={`extras:${item.codigo}`}
+                value={extras.length > 0 ? JSON.stringify(extras) : ''}
+              />
+            </>
+          ) : null}
+          {item.temObservacao ? (
+            <div className="grid gap-1">
+              <label htmlFor={obsId} className="text-sm font-medium">
+                Observações do fornecedor
+              </label>
+              <textarea
+                id={obsId}
+                name={`obs:${item.codigo}`}
+                value={observacao}
+                onChange={(evento) => onAlterar(item.codigo, { observacao: evento.target.value })}
+                rows={3}
+                maxLength={2000}
+                aria-label={`Observações de ${item.codigo}`}
+                placeholder="Marca oferecida, prazo de entrega ou ressalva técnica"
+                className="min-h-20 w-full rounded-lg border border-sky-200 bg-sky-50/80 px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-sky-400 focus-visible:ring-3 focus-visible:ring-sky-200"
+              />
+            </div>
+          ) : null}
         </div>
-        {item.status ? <StatusBadge status={item.status} titulo={significado} /> : null}
-      </header>
-      {item.detalhe ? <p className="text-sm leading-relaxed text-muted-foreground">{item.detalhe}</p> : null}
-      {item.local ? (
-        <p className="text-sm leading-relaxed">
-          <span className="text-muted-foreground">Onde entra: </span>
-          {item.local}
-        </p>
-      ) : null}
-      <p className="text-sm">
-        <span className="text-muted-foreground">Quantidade: </span>
-        <span className="font-medium tabular-nums">
-          {item.quantidade || '—'}
-          {item.unidade ? ` ${item.unidade}` : ''}
-        </span>
-      </p>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:items-end">
-        <div className="grid gap-1">
-          <label htmlFor={valorId} className="text-sm font-medium">
-            {item.rotuloValor}
-          </label>
-          <Input
-            id={valorId}
-            name={`valor:${item.codigo}`}
-            value={valor}
-            onChange={(evento) => onAlterar(item.codigo, { valor: evento.target.value })}
-            inputMode="decimal"
-            autoComplete="off"
-            aria-label={`${item.rotuloValor} de ${item.codigo}`}
-            placeholder="0,00"
-            className="border-sky-200 bg-sky-50/80 text-right focus-visible:border-sky-400 focus-visible:ring-sky-200"
+        {painel ? (
+          <PainelExtra
+            id={painelId}
+            base={base}
+            extras={extras}
+            reais={reais}
+            percentual={percentual}
+            onReais={setReais}
+            onPercentual={setPercentual}
+            onAplicar={aplicar}
+            onCancelar={fecharPainel}
           />
-          <p className="text-xs text-muted-foreground">
-            {item.unidade ? `Preço por ${item.unidade}.` : 'Preço da unidade desta linha.'}
-          </p>
-        </div>
-        <div className="rounded-lg bg-muted px-3 py-2 text-right">
-          <p className="text-[0.7rem] text-muted-foreground">Total da linha</p>
-          <p className="font-medium tabular-nums" data-total>
-            {total == null ? '—' : formatarMoedaBR(total)}
-          </p>
-        </div>
+        ) : null}
       </div>
-      {item.temObservacao ? (
-        <div className="grid gap-1">
-          <label htmlFor={obsId} className="text-sm font-medium">
-            Observações do fornecedor
-          </label>
-          <textarea
-            id={obsId}
-            name={`obs:${item.codigo}`}
-            value={observacao}
-            onChange={(evento) => onAlterar(item.codigo, { observacao: evento.target.value })}
-            rows={3}
-            maxLength={2000}
-            aria-label={`Observações de ${item.codigo}`}
-            placeholder="Marca oferecida, prazo de entrega ou ressalva técnica"
-            className="min-h-20 w-full rounded-lg border border-sky-200 bg-sky-50/80 px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-sky-400 focus-visible:ring-3 focus-visible:ring-sky-200"
-          />
-        </div>
-      ) : null}
     </article>
+  )
+}
+
+function PainelExtra({
+  id,
+  base,
+  extras,
+  reais,
+  percentual,
+  onReais,
+  onPercentual,
+  onAplicar,
+  onCancelar,
+}: {
+  id: string
+  base: number | null
+  extras: ExtraServico[]
+  reais: string
+  percentual: string
+  onReais: (valor: string) => void
+  onPercentual: (valor: string) => void
+  onAplicar: () => void
+  onCancelar: () => void
+}) {
+  const rascunho = rascunhoExtra('previa', reais, percentual)
+  const previa =
+    base == null ? null : valorFinalServico(base, rascunho ? [...extras, rascunho] : extras)
+  const reaisId = `${id}-reais`
+  const percentualId = `${id}-percentual`
+  return (
+    <aside
+      id={id}
+      className="w-full shrink-0 rounded-lg border border-dashed border-amber-400 bg-amber-50/70 p-3 @min-[32rem]:w-60"
+    >
+      <p className="text-xs font-medium text-amber-950">Extra</p>
+      <p className="mt-2 text-[0.7rem] text-muted-foreground">Valor base</p>
+      <p className="text-sm font-medium tabular-nums">{base == null ? '—' : formatarMoedaBR(base)}</p>
+      <div className="mt-3 grid gap-1">
+        <label htmlFor={reaisId} className="text-xs font-medium">
+          Extra em R$
+        </label>
+        <Input
+          id={reaisId}
+          value={reais}
+          onChange={(evento) => onReais(mascaraMoeda(evento.target.value))}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="R$ 0,00"
+          aria-label="Extra em reais"
+          className="text-right"
+        />
+      </div>
+      <div className="mt-2 grid gap-1">
+        <label htmlFor={percentualId} className="text-xs font-medium">
+          Extra em %
+        </label>
+        <Input
+          id={percentualId}
+          value={percentual}
+          onChange={(evento) => onPercentual(mascaraPercentual(evento.target.value))}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0,00%"
+          aria-label="Extra em percentual"
+          className="text-right"
+        />
+      </div>
+      <p className="mt-3 text-[0.7rem] text-muted-foreground">Prévia</p>
+      <p className="text-sm font-medium tabular-nums" data-previa>
+        {previa == null ? '—' : formatarMoedaBR(previa)}
+      </p>
+      {base == null ? (
+        <p className="mt-2 text-xs text-muted-foreground">Preencha o valor do serviço antes de aplicar.</p>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Button type="button" size="sm" onClick={onAplicar} disabled={base == null || rascunho == null}>
+          Aplicar
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onCancelar}>
+          Cancelar
+        </Button>
+      </div>
+    </aside>
   )
 }
 
