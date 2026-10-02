@@ -1,7 +1,9 @@
 import { carregarPlanilha } from '@/app/actions/projetos'
 import { FormPlanilha } from '@/components/form-planilha'
 import { ArquivoReferencial } from '@/components/arquivo-referencial'
+import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { CotacaoTela } from '@/components/cotacao-tela'
+import { Recado } from '@/components/recado'
 import { RemoverProjeto } from '@/components/remover-projeto'
 import { PlanilhaTela } from '@/components/planilha-tela'
 import { Button } from '@/components/ui/button'
@@ -12,7 +14,7 @@ import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
 import { STATUS_PROJETO } from '@/lib/projetos/tipos'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
@@ -35,34 +37,36 @@ export default async function ProjetoPage({
   const lida = await planilhaDoProjeto(projeto).catch(() => null)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            <Link href="/" className="inline-flex items-center gap-1 hover:text-foreground">
-              <ArrowLeft className="size-3.5" />
-              Projetos
-            </Link>
-          </p>
-          <h1 className="mt-1 text-xl font-semibold">{projeto.nome}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]} · última alteração{' '}
-            {dataHoraBR(projeto.atualizadoEm)} por {projeto.atualizadoPor}
-          </p>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-4">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="inline-flex items-center gap-1 hover:text-foreground">
+            <ArrowLeft className="size-3.5" />
+            Projetos
+          </Link>
+        </p>
+        <CabecalhoPagina
+          titulo={projeto.nome}
+          icone={FileSpreadsheet}
+          acoes={
+            usuario.papel === 'administrador' && avisos.confirmar !== 'remover' ? (
+              <RemoverProjeto
+                id={projeto.id}
+                nome={projeto.nome}
+                confirmar={false}
+                destinoConfirmar={`/projetos/${projeto.id}?confirmar=remover`}
+                destinoCancelar={`/projetos/${projeto.id}`}
+              />
+            ) : null
+          }
+        >
+          {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]} · última alteração{' '}
+          {dataHoraBR(projeto.atualizadoEm)} por {projeto.atualizadoPor}
           <div id="conclusao-projeto" className="mt-3" />
-        </div>
-        {usuario.papel === 'administrador' && avisos.confirmar !== 'remover' ? (
-          <RemoverProjeto
-            id={projeto.id}
-            nome={projeto.nome}
-            confirmar={false}
-            destinoConfirmar={`/projetos/${projeto.id}?confirmar=remover`}
-            destinoCancelar={`/projetos/${projeto.id}`}
-          />
-        ) : null}
+        </CabecalhoPagina>
       </div>
       {usuario.papel === 'administrador' && avisos.confirmar === 'remover' ? (
-        <div className="rounded-lg border border-destructive/40 px-3 py-3">
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
           <RemoverProjeto
             id={projeto.id}
             nome={projeto.nome}
@@ -72,14 +76,8 @@ export default async function ProjetoPage({
           />
         </div>
       ) : null}
-      {avisos.erro ? (
-        <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">
-          {avisos.erro}
-        </p>
-      ) : null}
-      {avisos.ok ? (
-        <p className="rounded-lg border px-3 py-2 text-sm">{avisos.ok}</p>
-      ) : null}
+      {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
+      {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <div className="flex flex-col gap-3">
           <ArquivoReferencial projeto={projeto} />
@@ -105,7 +103,7 @@ export default async function ProjetoPage({
           <PlanilhaTela projeto={projeto} linhas={lida.linhas} />
         </div>
       ) : (
-        <div className="max-w-lg rounded-lg border p-4">
+        <div className="max-w-lg rounded-2xl border bg-card p-5 shadow-sm">
           <h2 className="text-sm font-medium">Planilha referencial</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {projeto.status === 'rascunho'

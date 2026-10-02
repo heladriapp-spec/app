@@ -48,7 +48,7 @@ export function AppNavLinks({
   const hrefs = groups.flatMap((group) => group.items.map((item) => item.href))
 
   return (
-    <nav className="flex flex-col gap-5" aria-label="Seções">
+    <nav className="flex flex-col gap-6" aria-label="Seções">
       {groups.map((group) => (
         <div key={group.label} className="grid gap-1">
           <p
@@ -69,14 +69,14 @@ export function AppNavLinks({
                   href={link.href}
                   aria-current={ligado ? 'page' : undefined}
                   className={cn(
-                    'inline-flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium',
+                    'inline-flex h-10 items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium',
                     tom === 'escuro'
                       ? ligado
                         ? 'bg-white/10 text-white'
                         : 'text-slate-300 hover:bg-white/5 hover:text-white'
                       : ligado
                         ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
                 >
                   <Icon className="size-4 opacity-80" />

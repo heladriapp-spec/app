@@ -2,6 +2,7 @@
 
 import { salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
+import { Recado } from '@/components/recado'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
 import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,21 @@ import { formatarMoedaBR, formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/n
 import { adesaoDe, opcoesStatus, type OpcaoStatus } from '@/lib/planilha/status'
 import type { ExtraServico } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { Check, ChevronLeft, ChevronRight, Circle, Plus, Trash2 } from 'lucide-react'
+import {
+  BookOpen,
+  Calculator,
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  HardHat,
+  Package,
+  PenLine,
+  Plus,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -117,12 +132,12 @@ export function CotacaoTela({
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-4">
+    <form action={salvarPreenchimento} className="flex flex-col gap-6">
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
       <NotaArquivoReferencial nome={arquivoNome} />
-      <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav className="flex flex-col gap-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
+      <div className="grid items-start gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Capítulos
           </p>
@@ -135,11 +150,7 @@ export function CotacaoTela({
             const quebra = anterior == null || anterior.kicker !== item.kicker
             return (
               <div key={item.id} className="contents">
-                {quebra ? (
-                  <p className="px-2.5 pt-3 pb-1 text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
-                    {item.kicker}
-                  </p>
-                ) : null}
+                {quebra ? <RotuloCapitulo nome={item.kicker} /> : null}
                 <button
                   type="button"
                   onClick={() => setAberto(item.id)}
@@ -175,13 +186,13 @@ export function CotacaoTela({
           return (
             <section
               key={item.id}
-              className={cn('min-w-0 flex-col gap-4', item.id === atual.id ? 'flex' : 'hidden')}
+              className={cn('@container min-w-0 flex-col gap-6', item.id === atual.id ? 'flex' : 'hidden')}
             >
               <div>
                 <p className="text-xs text-muted-foreground">
                   {item.kicker} · {indice + 1} de {capitulos.length}
                 </p>
-                <h2 className="text-lg font-semibold">{item.nome}</h2>
+                <h2 className="text-xl font-semibold tracking-tight">{item.nome}</h2>
                 {itens.length > 0 ? (
                   <>
                     <p className="mt-1 text-sm text-muted-foreground tabular-nums">
@@ -215,8 +226,8 @@ export function CotacaoTela({
                 <Resumo cotacao={cotacao} iniciais={valores} totais={totais} />
               ) : null}
               {item.origem === 'cronograma' ? <Cronograma cotacao={cotacao} /> : null}
-              {aviso ? <p className="text-sm text-destructive">{aviso}</p> : null}
-              <div className="sticky bottom-0 z-10 -mx-4 mt-2 flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur md:mx-0 md:px-0">
+              {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
+              <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-4 md:shadow-sm">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => setAberto(anterior.id)}>
                     <ChevronLeft data-icon="inline-start" />
@@ -251,9 +262,27 @@ export function CotacaoTela({
   )
 }
 
+const ICONE_KICKER: Record<string, LucideIcon> = {
+  Leitura: BookOpen,
+  Materiais: Package,
+  Serviços: HardHat,
+  Calculado: Calculator,
+  Cronograma: CalendarDays,
+}
+
+function RotuloCapitulo({ nome }: { nome: string }) {
+  const Icone = ICONE_KICKER[nome] ?? BookOpen
+  return (
+    <p className="mt-4 flex items-center gap-2 px-2.5 pt-1 pb-1 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase first:mt-0">
+      <Icone className="size-3.5 text-primary" aria-hidden />
+      {nome}
+    </p>
+  )
+}
+
 function classeCapitulo(preenchido: boolean | null, ativo: boolean) {
   return cn(
-    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors',
+    'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
     preenchido === true && 'border-emerald-400 bg-emerald-50 text-emerald-950',
     preenchido === false && 'border-amber-400 bg-amber-50 text-amber-950',
     preenchido === null && 'border-border bg-background',
@@ -274,7 +303,7 @@ function montarCapitulos(cotacao: CotacaoLida): Capitulo[] {
   })
   lista.push({ id: 'resumo', nome: 'Resumo', kicker: 'Calculado', origem: 'resumo' })
   if (cotacao.fases.length > 0) {
-    lista.push({ id: 'cronograma', nome: 'Cronograma', kicker: 'Leitura', origem: 'cronograma' })
+    lista.push({ id: 'cronograma', nome: 'Cronograma', kicker: 'Cronograma', origem: 'cronograma' })
   }
   return lista
 }
@@ -303,7 +332,15 @@ function DicaCapitulo({
   valores: Valores
 }) {
   if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') {
-    return <span className="block truncate text-[0.7rem] opacity-70">{capitulo.kicker}</span>
+    const dica =
+      capitulo.id === 'instrucoes'
+        ? 'Como preencher'
+        : capitulo.id === 'resumo'
+          ? 'Totais do trabalho'
+          : capitulo.id === 'cronograma'
+            ? 'Fases e datas'
+            : capitulo.kicker
+    return <span className="block truncate text-[0.7rem] opacity-70">{dica}</span>
   }
   const itens = itensDoCapitulo(capitulo, cotacao)
   const adesao = adesaoDe(itens.map((item) => valores[item.codigo]?.status || item.status))
@@ -368,7 +405,7 @@ function BarraConclusao({
         <span className="font-medium tabular-nums">{adesao.percentual}%</span>
       </div>
       <div
-        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+        className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
         role="meter"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -395,18 +432,18 @@ function resumoCapitulo(capitulo: Capitulo) {
 
 function Instrucoes({ cotacao }: { cotacao: CotacaoLida }) {
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-5">
       {cotacao.titulo ? <p className="text-sm font-medium">{cotacao.titulo}</p> : null}
       {cotacao.subtitulo ? <p className="text-sm text-muted-foreground">{cotacao.subtitulo}</p> : null}
       {cotacao.preenchimento ? (
-        <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+        <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
           {cotacao.preenchimento}
         </p>
       ) : null}
       {cotacao.orientacoes.length > 0 ? (
         <ol className="flex flex-col gap-2">
           {cotacao.orientacoes.map((texto, indice) => (
-            <li key={texto} className="flex gap-3 rounded-xl border px-3 py-2.5 text-sm">
+            <li key={texto} className="flex gap-3 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                 {indice + 1}
               </span>
@@ -420,7 +457,7 @@ function Instrucoes({ cotacao }: { cotacao: CotacaoLida }) {
           <h3 className="text-sm font-medium">Status do levantamento</h3>
           <ul className="grid gap-2 sm:grid-cols-2">
             {cotacao.legenda.map((item) => (
-              <li key={item.status} className="rounded-xl border px-3 py-2.5">
+              <li key={item.status} className="rounded-xl border bg-card px-4 py-3 shadow-sm">
                 <StatusBadge status={item.status} />
                 <p className="mt-1.5 text-sm text-muted-foreground">{item.texto}</p>
               </li>
@@ -434,13 +471,13 @@ function Instrucoes({ cotacao }: { cotacao: CotacaoLida }) {
 
 function LegendaPreenchimento() {
   return (
-    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3 rounded-sm border border-sky-300 bg-sky-50" />
+    <p className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-card px-4 py-3 text-xs text-muted-foreground shadow-sm">
+      <span className="inline-flex items-center gap-2">
+        <PenLine className="size-3.5 text-primary" aria-hidden />
         Campo para preencher
       </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3 rounded-sm border bg-muted" />
+      <span className="inline-flex items-center gap-2">
+        <Calculator className="size-3.5 text-muted-foreground" aria-hidden />
         Total calculado, não se digita
       </span>
     </p>
@@ -464,7 +501,7 @@ function ListaItens({
 }) {
   const opcoes = opcoesStatus(legenda)
   return (
-    <div className="grid gap-3 xl:grid-cols-2">
+    <div className="grid gap-6 @5xl:grid-cols-2">
       {itens.map((item) => (
         <ItemCard
           key={item.codigo}
@@ -557,7 +594,7 @@ function ItemCard({
     <article
       id={`item-${item.codigo}`}
       data-origem={origem}
-      className="@container flex flex-col gap-3 rounded-xl border p-4"
+      className="@container flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm"
     >
       <div
         className={cn(
@@ -565,10 +602,10 @@ function ItemCard({
           painel && '@min-[32rem]:flex-row @min-[32rem]:items-start',
         )}
       >
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">{item.codigo}</p>
+              <p className="text-xs font-medium tracking-wide text-primary">{item.codigo}</p>
               <h4 className="font-medium leading-snug">{item.titulo}</h4>
             </div>
             <SeletorStatus
@@ -632,7 +669,7 @@ function ItemCard({
                 autoComplete="off"
                 aria-label={`${item.rotuloValor} de ${item.codigo}`}
                 placeholder="0,00"
-                className="border-sky-200 bg-sky-50/80 text-right read-only:bg-muted/50 focus-visible:border-sky-400 focus-visible:ring-sky-200"
+                className="border-primary/25 bg-primary/5 text-right read-only:bg-muted/60 focus-visible:border-primary focus-visible:ring-primary/20"
               />
               <p className="text-xs text-muted-foreground">
                 {extras.length > 0
@@ -642,7 +679,7 @@ function ItemCard({
                     : 'Preço da unidade desta linha.'}
               </p>
             </div>
-            <div className="rounded-lg bg-muted px-3 py-2 text-right">
+            <div className="rounded-xl bg-muted px-3 py-2.5 text-right">
               <p className="text-[0.7rem] text-muted-foreground">Total da linha</p>
               <p className="font-medium tabular-nums" data-total>
                 {total == null ? '—' : formatarMoedaBR(total)}
@@ -698,7 +735,7 @@ function ItemCard({
                 maxLength={2000}
                 aria-label={`Observações de ${item.codigo}`}
                 placeholder="Marca oferecida, prazo de entrega ou ressalva técnica"
-                className="min-h-20 w-full rounded-lg border border-sky-200 bg-sky-50/80 px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-sky-400 focus-visible:ring-3 focus-visible:ring-sky-200"
+                className="min-h-24 w-full rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
               />
             </div>
           ) : null}
@@ -828,7 +865,7 @@ function Resumo({
   ).length
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-5">
       <div className="rounded-xl border px-4 py-3">
         <p className="text-xs text-muted-foreground">Total geral cotado</p>
         <p className="text-2xl font-semibold tabular-nums" data-resumo="geral">
@@ -918,7 +955,7 @@ function Resumo({
 
 function Cronograma({ cotacao }: { cotacao: CotacaoLida }) {
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-5">
       {cotacao.cronogramaTitulo ? <p className="text-sm font-medium">{cotacao.cronogramaTitulo}</p> : null}
       {cotacao.cronogramaIntro ? (
         <p className="text-sm leading-relaxed text-muted-foreground">{cotacao.cronogramaIntro}</p>

@@ -1,10 +1,36 @@
 import { Badge } from '@/components/ui/badge'
+import { Activity, Boxes, Gauge, HeartPulse, type LucideIcon } from 'lucide-react'
 import {
   GRUPO_CHECK_LABEL,
   STATUS_CHECK_LABEL,
   STATUS_SAUDE_LABEL,
 } from '@/lib/saude/rotulos'
 import type { RelatorioSaude, StatusCheck } from '@/lib/saude/tipos'
+
+function Metrica({
+  icone: Icone,
+  rotulo,
+  valor,
+  detalhe,
+}: {
+  icone: LucideIcon
+  rotulo: string
+  valor: string
+  detalhe: string
+}) {
+  return (
+    <article className="flex gap-3 rounded-2xl border bg-card p-4 shadow-sm">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icone className="size-5" aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">{rotulo}</p>
+        <p className="mt-1 font-semibold leading-snug">{valor}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>
+      </div>
+    </article>
+  )
+}
 
 function tom(status: StatusCheck) {
   if (status === 'ok') return 'secondary' as const
@@ -23,33 +49,32 @@ export function SaudePainel({
   const grupos = ['ambiente', 'produto'] as const
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <article className="rounded-lg border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Estado</p>
-          <p className="font-medium">{STATUS_SAUDE_LABEL[relatorio.status]}</p>
-          <p className="text-xs text-muted-foreground">
-            {relatorio.contagem.ok} ok · {relatorio.contagem.alerta} alerta(s) ·{' '}
-            {relatorio.contagem.erro} erro(s)
-          </p>
-        </article>
-        <article className="rounded-lg border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Versão</p>
-          <p className="font-medium">
-            {relatorio.versao} · {relatorio.build}
-          </p>
-          <p className="text-xs text-muted-foreground">{relatorio.ambiente}</p>
-        </article>
-        <article className="rounded-lg border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Pré-requisitos</p>
-          <p className="font-medium">{STATUS_CHECK_LABEL[relatorio.prerequisites.status]}</p>
-          <p className="text-xs text-muted-foreground">{relatorio.prerequisites.mensagem}</p>
-        </article>
-        <article className="rounded-lg border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Capacidade</p>
-          <p className="font-medium">{STATUS_CHECK_LABEL[relatorio.capacity.status]}</p>
-          <p className="text-xs text-muted-foreground">{relatorio.capacity.mensagem}</p>
-        </article>
+    <div className="flex flex-col gap-8">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Metrica
+          icone={HeartPulse}
+          rotulo="Estado"
+          valor={STATUS_SAUDE_LABEL[relatorio.status]}
+          detalhe={`${relatorio.contagem.ok} ok · ${relatorio.contagem.alerta} alerta(s) · ${relatorio.contagem.erro} erro(s)`}
+        />
+        <Metrica
+          icone={Boxes}
+          rotulo="Versão"
+          valor={`${relatorio.versao} · ${relatorio.build}`}
+          detalhe={relatorio.ambiente}
+        />
+        <Metrica
+          icone={Activity}
+          rotulo="Pré-requisitos"
+          valor={STATUS_CHECK_LABEL[relatorio.prerequisites.status]}
+          detalhe={relatorio.prerequisites.mensagem}
+        />
+        <Metrica
+          icone={Gauge}
+          rotulo="Capacidade"
+          valor={STATUS_CHECK_LABEL[relatorio.capacity.status]}
+          detalhe={relatorio.capacity.mensagem}
+        />
       </section>
 
       {grupos.map((grupo) => {
@@ -58,11 +83,11 @@ export function SaudePainel({
         )
         if (itens.length === 0) return null
         return (
-          <section key={grupo} className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium">{GRUPO_CHECK_LABEL[grupo]}</h2>
-            <ul className="grid gap-2">
+          <section key={grupo} className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold tracking-tight">{GRUPO_CHECK_LABEL[grupo]}</h2>
+            <ul className="grid gap-3">
               {itens.map((check) => (
-                <li key={check.id} className="rounded-lg border bg-card px-3 py-2">
+                <li key={check.id} className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-medium">{check.nome}</p>
                     <Badge variant={tom(check.status)}>{STATUS_CHECK_LABEL[check.status]}</Badge>

@@ -21,12 +21,12 @@ export function BoasVindas({ nome }: { nome: string }) {
   if (!aberto) return null
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-background/60 px-4 pt-[12vh]">
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-slate-700/35 px-4 pt-[12vh] backdrop-blur-[2px]">
       <form
         ref={formRef}
         action={dispensarBoasVindas}
         data-aviso="silencioso"
-        className="w-full max-w-md rounded-xl border bg-card p-5 shadow-lg"
+        className="w-full max-w-md rounded-3xl border bg-card p-6 shadow-2xl"
         onSubmit={() => setAberto(false)}
         onFocus={() => {
           interagiu.current = true

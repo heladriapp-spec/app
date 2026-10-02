@@ -1,6 +1,7 @@
 'use client'
 
-import { Clock } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { CircleCheck, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 type Fase = 'oculto' | 'processando' | 'concluida' | 'saindo' | 'encerrada'
@@ -125,12 +126,24 @@ export function AvisoAcao() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4"
+      aria-busy={girando}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-700/40 px-4 backdrop-blur-[2px]"
     >
-      <p className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm font-medium shadow-lg">
-        {girando ? <Clock className="size-4 animate-spin" aria-hidden /> : null}
-        {TEXTO[fase]}
-      </p>
+      <div className="aviso-painel flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border bg-card px-10 py-10 text-center shadow-2xl">
+        <span
+          className={cn(
+            'flex size-20 items-center justify-center rounded-full',
+            girando ? 'bg-primary/10 text-primary' : 'bg-emerald-100 text-emerald-700',
+          )}
+        >
+          {girando ? (
+            <Clock className="size-10 animate-spin" aria-hidden />
+          ) : (
+            <CircleCheck className="size-10" aria-hidden />
+          )}
+        </span>
+        <p className="text-xl font-semibold tracking-tight">{TEXTO[fase]}</p>
+      </div>
     </div>
   )
 }

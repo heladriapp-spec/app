@@ -1,6 +1,7 @@
 import { sair } from '@/app/actions/auth'
 import { AppNavLinks, type NavGroup } from '@/components/app-nav'
 import { AppVersao } from '@/components/app-versao'
+import { Marca } from '@/components/marca'
 import { Button } from '@/components/ui/button'
 import type { UsuarioPublico } from '@/lib/operacao/store'
 import { LogOut } from 'lucide-react'
@@ -18,12 +19,11 @@ export function AppChrome({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-dvh bg-muted/50">
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-card md:flex">
-        <div className="px-4 pt-5 pb-4">
-          <p className="text-sm font-semibold">Heladri</p>
-          <p className="text-xs text-muted-foreground">Planilha do SESC</p>
-          <AppVersao className="mt-1 text-muted-foreground" />
+    <div className="flex min-h-dvh bg-muted/70">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-sidebar md:flex">
+        <div className="border-b px-4 py-5">
+          <Marca />
+          <AppVersao className="mt-3 text-muted-foreground" />
         </div>
         <div className="flex-1 overflow-y-auto px-3">
           <AppNavLinks groups={groups} tom="claro" />
@@ -43,10 +43,10 @@ export function AppChrome({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-4 py-3 md:hidden">
+        <header className="flex items-center justify-between border-b bg-sidebar px-4 py-3 md:hidden">
           <div>
-            <p className="text-sm font-semibold">Heladri</p>
-            <AppVersao className="text-muted-foreground" />
+            <Marca compacta />
+            <AppVersao className="mt-1 text-muted-foreground" />
           </div>
           <form action={sair} data-aviso="sair">
             <Button type="submit" variant="ghost" size="sm">
@@ -58,7 +58,7 @@ export function AppChrome({
         <div className="border-b px-4 py-3 md:hidden">
           <AppNavLinks groups={groups} tom="claro" />
         </div>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 md:px-10 md:py-10">{children}</main>
       </div>
     </div>
   )

@@ -47,38 +47,38 @@
 
 :root {
   color-scheme: light;
-  --background: oklch(0.985 0.002 250);
-  --foreground: oklch(0.28 0.02 260);
+  --background: oklch(0.985 0.006 200);
+  --foreground: oklch(0.27 0.03 230);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.28 0.02 260);
+  --card-foreground: oklch(0.27 0.03 230);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.28 0.02 260);
-  --primary: oklch(0.32 0.04 250);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.004 250);
-  --secondary-foreground: oklch(0.28 0.02 260);
-  --muted: oklch(0.96 0.004 250);
-  --muted-foreground: oklch(0.5 0.02 260);
-  --accent: oklch(0.96 0.004 250);
-  --accent-foreground: oklch(0.28 0.02 260);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.27 0.03 230);
+  --primary: oklch(0.46 0.09 195);
+  --primary-foreground: oklch(0.985 0.01 180);
+  --secondary: oklch(0.95 0.016 195);
+  --secondary-foreground: oklch(0.32 0.04 210);
+  --muted: oklch(0.955 0.012 200);
+  --muted-foreground: oklch(0.48 0.03 230);
+  --accent: oklch(0.94 0.024 195);
+  --accent-foreground: oklch(0.32 0.05 200);
+  --destructive: oklch(0.55 0.2 25);
+  --border: oklch(0.9 0.014 210);
+  --input: oklch(0.9 0.014 210);
+  --ring: oklch(0.55 0.09 195);
+  --chart-1: oklch(0.55 0.09 195);
+  --chart-2: oklch(0.62 0.12 155);
+  --chart-3: oklch(0.72 0.12 85);
+  --chart-4: oklch(0.58 0.14 30);
+  --chart-5: oklch(0.5 0.08 250);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.99 0.006 200);
+  --sidebar-foreground: oklch(0.27 0.03 230);
+  --sidebar-primary: oklch(0.46 0.09 195);
+  --sidebar-primary-foreground: oklch(0.985 0.01 180);
+  --sidebar-accent: oklch(0.94 0.028 195);
+  --sidebar-accent-foreground: oklch(0.34 0.06 195);
+  --sidebar-border: oklch(0.9 0.014 210);
+  --sidebar-ring: oklch(0.55 0.09 195);
 }
 
 .dark {
@@ -160,4 +160,19 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@keyframes aviso-surgir {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.aviso-painel {
+  animation: aviso-surgir 180ms ease-out;
 }

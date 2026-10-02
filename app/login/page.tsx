@@ -1,5 +1,6 @@
 import { entrar } from '@/app/actions/auth'
 import { AuthShell } from '@/components/auth-shell'
+import { Recado } from '@/components/recado'
 import { usuarioDaSessao } from '@/lib/auth/guard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,15 +23,8 @@ export default async function LoginPage({
         A operação (usuários, versão, esteira, logs e saúde) fica com o administrador. O
         lançamento na planilha fica com quem ele incluir.
       </p>
-      {ok ? <p className="rounded-lg border px-3 py-2 text-sm">{ok}</p> : null}
-      {erro ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive"
-        >
-          {erro}
-        </p>
-      ) : null}
+      {ok ? <Recado tom="ok">{ok}</Recado> : null}
+      {erro ? <Recado tom="erro">{erro}</Recado> : null}
       <form action={entrar} className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="login">Usuário</Label>

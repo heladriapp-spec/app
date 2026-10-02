@@ -1,11 +1,13 @@
 import { criarProjeto } from '@/app/actions/projetos'
+import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { FormPlanilha } from '@/components/form-planilha'
+import { Recado } from '@/components/recado'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { requireAdmin } from '@/lib/auth/guard'
 import { dataHojeISO } from '@/lib/planilha/numeros'
-import { Plus, Save } from 'lucide-react'
+import { FolderPlus, Plus, Save } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function NovoProjetoPage({
@@ -17,20 +19,13 @@ export default async function NovoProjetoPage({
   const { erro } = await searchParams
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Criar novo projeto</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Nome e data identificam o trabalho. A planilha do SESC, se entrar agora, fica amarrada a
-          este projeto como arquivo referencial. Dá para salvar em rascunho e concluir depois. O
-          memorial descritivo é outro documento e não entra neste formulário.
-        </p>
-      </div>
-      {erro ? (
-        <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">
-          {erro}
-        </p>
-      ) : null}
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-8">
+      <CabecalhoPagina titulo="Criar novo projeto" icone={FolderPlus}>
+        Nome e data identificam o trabalho. A planilha do SESC, se entrar agora, fica amarrada a
+        este projeto como arquivo referencial. Dá para salvar em rascunho e concluir depois. O
+        memorial descritivo é outro documento e não entra neste formulário.
+      </CabecalhoPagina>
+      {erro ? <Recado tom="erro">{erro}</Recado> : null}
       <FormPlanilha action={criarProjeto} className="grid gap-4">
         <div className="grid gap-1.5">
           <Label htmlFor="nome">Nome</Label>

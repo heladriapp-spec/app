@@ -1,5 +1,6 @@
 'use client'
 
+import { Recado } from '@/components/recado'
 import { AVISO_PLANILHA_GRANDE, LIMITE_PLANILHA } from '@/lib/planilha/limite'
 import { useState, type FormEvent, type ReactNode } from 'react'
 
@@ -27,7 +28,7 @@ export function FormPlanilha({
   return (
     <form action={action} className={className} onSubmit={aoEnviar}>
       {erro ? (
-        <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">{erro}</p>
+        <Recado tom="erro">{erro}</Recado>
       ) : null}
       {children}
     </form>

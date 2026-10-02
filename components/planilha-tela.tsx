@@ -2,6 +2,7 @@
 
 import { salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
+import { Recado } from '@/components/recado'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
 import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
@@ -84,11 +85,11 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-4">
+    <form action={salvarPreenchimento} className="flex flex-col gap-6">
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial nome={projeto.arquivoNome} />
-      <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav className="flex flex-col gap-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
+      <div className="grid items-start gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Capítulos
           </p>
@@ -127,17 +128,17 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
           return (
             <section
               key={item.id}
-              className={cn('min-w-0 flex-col gap-3', item.id === atual.id ? 'flex' : 'hidden')}
+              className={cn('min-w-0 flex-col gap-6', item.id === atual.id ? 'flex' : 'hidden')}
             >
               <div>
                 <p className="text-xs text-muted-foreground">
                   {indice + 1} de {capitulos.length}
                 </p>
-                <h2 className="text-lg font-semibold">{item.nome}</h2>
+                <h2 className="text-xl font-semibold tracking-tight">{item.nome}</h2>
               </div>
               <Tabela itens={item.itens} valores={valores} onAlterar={alterar} />
-              {aviso ? <p className="text-sm text-destructive">{aviso}</p> : null}
-              <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 py-3 backdrop-blur">
+              {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
+              <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-4 shadow-sm backdrop-blur">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => setAberto(anterior.id)}>
                     <ChevronLeft data-icon="inline-start" />
@@ -193,21 +194,21 @@ function Tabela({
   )
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
       <table className="w-full min-w-[960px] border-collapse text-sm">
-        <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+        <thead className="bg-muted/70 text-left text-xs text-muted-foreground">
           <tr>
-            <th className="px-2 py-2 font-medium">Item</th>
-            <th className="px-2 py-2 font-medium">Código</th>
-            <th className="px-2 py-2 font-medium">Descrição</th>
-            <th className="px-2 py-2 font-medium">Un.</th>
-            <th className="px-2 py-2 font-medium">Qtd.</th>
-            <th className="px-2 py-2 font-medium">Material</th>
-            <th className="px-2 py-2 font-medium">Mão de obra</th>
-            <th className="px-2 py-2 font-medium">Total unit.</th>
-            <th className="px-2 py-2 font-medium">Total material</th>
-            <th className="px-2 py-2 font-medium">Total mão de obra</th>
-            <th className="px-2 py-2 font-medium">Total da linha</th>
+            <th className="px-3 py-3 font-medium">Item</th>
+            <th className="px-3 py-3 font-medium">Código</th>
+            <th className="px-3 py-3 font-medium">Descrição</th>
+            <th className="px-3 py-3 font-medium">Un.</th>
+            <th className="px-3 py-3 font-medium">Qtd.</th>
+            <th className="px-3 py-3 font-medium">Material</th>
+            <th className="px-3 py-3 font-medium">Mão de obra</th>
+            <th className="px-3 py-3 font-medium">Total unit.</th>
+            <th className="px-3 py-3 font-medium">Total material</th>
+            <th className="px-3 py-3 font-medium">Total mão de obra</th>
+            <th className="px-3 py-3 font-medium">Total da linha</th>
           </tr>
         </thead>
         <tbody>
@@ -221,11 +222,11 @@ function Tabela({
             const chave = String(linha.linha)
             return (
               <tr key={linha.linha} className="border-t">
-                <td className="px-2 py-1.5 tabular-nums">{linha.item}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{linha.codigo}</td>
-                <td className="max-w-md px-2 py-1.5">{linha.descricao}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{linha.unidade}</td>
-                <td className="px-2 py-1.5">
+                <td className="px-3 py-3 tabular-nums">{linha.item}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{linha.codigo}</td>
+                <td className="max-w-md px-3 py-3">{linha.descricao}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{linha.unidade}</td>
+                <td className="px-3 py-3">
                   <Input
                     name={`qtde:${chave}`}
                     value={campos.quantidade}
@@ -235,7 +236,7 @@ function Tabela({
                     className="w-20 text-right"
                   />
                 </td>
-                <td className="px-2 py-1.5">
+                <td className="px-3 py-3">
                   <Input
                     name={`material:${chave}`}
                     value={campos.material}
@@ -245,7 +246,7 @@ function Tabela({
                     className="w-24 text-right"
                   />
                 </td>
-                <td className="px-2 py-1.5">
+                <td className="px-3 py-3">
                   <Input
                     name={`mao:${chave}`}
                     value={campos.maoDeObra}
@@ -255,22 +256,22 @@ function Tabela({
                     className="w-24 text-right"
                   />
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{texto(totais.unitario)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{texto(totais.totalMaterial)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{texto(totais.totalMao)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{texto(totais.total)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{texto(totais.unitario)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{texto(totais.totalMaterial)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{texto(totais.totalMao)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{texto(totais.total)}</td>
               </tr>
             )
           })}
         </tbody>
         <tfoot>
           <tr className="border-t font-medium">
-            <td className="px-2 py-2" colSpan={8}>
+            <td className="px-3 py-3" colSpan={8}>
               Total do capítulo
             </td>
-            <td className="px-2 py-2 text-right tabular-nums">{formatarNumeroBR(somas.material)}</td>
-            <td className="px-2 py-2 text-right tabular-nums">{formatarNumeroBR(somas.mao)}</td>
-            <td className="px-2 py-2 text-right tabular-nums">
+            <td className="px-3 py-3 text-right tabular-nums">{formatarNumeroBR(somas.material)}</td>
+            <td className="px-3 py-3 text-right tabular-nums">{formatarNumeroBR(somas.mao)}</td>
+            <td className="px-3 py-3 text-right tabular-nums">
               {formatarNumeroBR(somas.material + somas.mao)}
             </td>
           </tr>
@@ -323,7 +324,7 @@ function dica(capitulo: Capitulo, valores: Record<string, Lancamento>) {
 
 function classeCapitulo(preenchido: boolean, ativo: boolean) {
   return cn(
-    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors',
+    'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
     preenchido ? 'border-emerald-400 bg-emerald-50 text-emerald-950' : 'border-amber-400 bg-amber-50 text-amber-950',
     ativo && 'ring-2 ring-primary/40',
   )

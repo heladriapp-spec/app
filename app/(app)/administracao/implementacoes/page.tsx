@@ -1,6 +1,8 @@
 import { decidirEntrega } from '@/app/actions/entregas'
+import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { GestaoAtalhos } from '@/components/gestao-atalhos'
 import { NotaOperacao } from '@/components/nota-operacao'
+import { Recado } from '@/components/recado'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { carregarResolvidas } from '@/lib/entregas/carregar'
@@ -30,7 +32,7 @@ function Cartao({
   const podeRollback = acoes && item.statusDecisao !== 'pedido_reversao'
 
   return (
-    <article className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+    <article className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="font-medium">
@@ -104,20 +106,15 @@ export default async function ImplementacoesPage({
   const foraDeEscopo = resolvidas.filter((item) => item.statusBase === 'fora_de_escopo')
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-lg font-semibold md:text-xl">
-            <Rocket className="size-5 text-muted-foreground" />
-            Implantações
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Catálogo das entregas do Heladri. Nova entrega, atualização e correção. Aprovar libera
-            desenvolver esta entrega e a esteira aponta o próximo passo.
-          </p>
-        </div>
-        <GestaoAtalhos atual="/administracao/implementacoes" />
-      </div>
+    <div className="flex flex-col gap-8">
+      <CabecalhoPagina
+        titulo="Implantações"
+        icone={Rocket}
+        acoes={<GestaoAtalhos atual="/administracao/implementacoes" />}
+      >
+        Catálogo das entregas do Heladri. Nova entrega, atualização e correção. Aprovar libera
+        desenvolver esta entrega e a esteira aponta o próximo passo.
+      </CabecalhoPagina>
       <NotaOperacao />
 
       <nav className="flex flex-wrap gap-2" aria-label="Visões">
@@ -132,10 +129,8 @@ export default async function ImplementacoesPage({
         ))}
       </nav>
 
-      {params.ok ? <p className="rounded-lg border px-3 py-2 text-sm">{params.ok}</p> : null}
-      {params.erro ? (
-        <p className="rounded-lg border px-3 py-2 text-sm text-destructive">{params.erro}</p>
-      ) : null}
+      {params.ok ? <Recado tom="ok">{params.ok}</Recado> : null}
+      {params.erro ? <Recado tom="erro">{params.erro}</Recado> : null}
 
       {visao === 'releases' ? (
         <p className="text-sm">
@@ -143,7 +138,7 @@ export default async function ImplementacoesPage({
         </p>
       ) : null}
 
-      <div className="grid gap-3">
+      <div className="grid gap-4">
         {lista.map((item) => {
           const conflito = parecerDaEntrega(parecer, item.id)
           return (
@@ -162,7 +157,7 @@ export default async function ImplementacoesPage({
       {visao === 'releases' && foraDeEscopo.length > 0 ? (
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">Fora de escopo</h2>
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             {foraDeEscopo.map((item) => (
               <Cartao key={item.id} item={item} visao={visao} acoes={false} bloqueado={false} motivos={[]} />
             ))}
@@ -173,7 +168,7 @@ export default async function ImplementacoesPage({
       {visao === 'releases' && jaSaiu.length > 0 ? (
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">Já implantado</h2>
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             {jaSaiu.map((item) => (
               <Cartao key={item.id} item={item} visao={visao} acoes={false} bloqueado={false} motivos={[]} />
             ))}

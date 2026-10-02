@@ -7,8 +7,10 @@ import {
   reenviarNotificacao,
 } from '@/app/actions/usuarios'
 import { usuarioDaSessao } from '@/lib/auth/guard'
+import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { GestaoAtalhos } from '@/components/gestao-atalhos'
 import { NotaOperacao } from '@/components/nota-operacao'
+import { Recado } from '@/components/recado'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,39 +50,22 @@ export default async function AdministracaoPage({
     .filter((item) => !item.entrou)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-lg font-semibold md:text-xl">
-            <Shield className="size-5 text-muted-foreground" />
-            Administração
-          </h1>
-          <div className="mt-1">
-            <NotaOperacao />
-          </div>
-        </div>
-        <GestaoAtalhos atual="/administracao" />
-      </div>
+    <div className="flex flex-col gap-8">
+      <CabecalhoPagina titulo="Administração" icone={Shield} acoes={<GestaoAtalhos atual="/administracao" />}>
+        <NotaOperacao />
+      </CabecalhoPagina>
 
-      {ok ? (
-        <p role="status" className="rounded-lg border px-3 py-2 text-sm">
-          {ok}
-        </p>
-      ) : null}
-      {erro ? (
-        <p role="alert" className="rounded-lg border px-3 py-2 text-sm text-destructive">
-          {erro}
-        </p>
-      ) : null}
+      {ok ? <Recado tom="ok">{ok}</Recado> : null}
+      {erro ? <Recado tom="erro">{erro}</Recado> : null}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Pedidos de acesso</h2>
         {pendentes.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum pedido pendente.</p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {pendentes.map((pedido) => (
-              <li key={pedido.id} className="rounded-lg border bg-card p-3">
+              <li key={pedido.id} className="rounded-2xl border bg-card p-4 shadow-sm">
                 <p className="font-medium">{pedido.nome}</p>
                 <p className="text-sm text-muted-foreground">
                   {pedido.email} · {pedido.celular} · {dataHoraBR(pedido.criadoEm)}
@@ -119,9 +104,9 @@ export default async function AdministracaoPage({
             Ninguém aprovado está sem o primeiro acesso.
           </p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {aguardandoAcesso.map(({ pedido, usuario }) => (
-              <li key={pedido.id} className="rounded-lg border bg-card p-3">
+              <li key={pedido.id} className="rounded-2xl border bg-card p-4 shadow-sm">
                 <p className="font-medium">{pedido.nome}</p>
                 <p className="text-sm text-muted-foreground">
                   {pedido.email}
@@ -153,7 +138,7 @@ export default async function AdministracaoPage({
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">Nova conta</h2>
-        <form action={criarUsuario} className="grid max-w-xl gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2">
+        <form action={criarUsuario} className="grid max-w-xl gap-3 rounded-2xl border bg-card p-4 shadow-sm sm:grid-cols-2">
           <div className="grid gap-1">
             <Label htmlFor="novo-nome">Nome</Label>
             <Input id="novo-nome" name="nome" required />
