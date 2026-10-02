@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.6.0 — o preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final, sem percentual, margem ou menção ao extra. Concluir, excluir linha e o histórico de versões continuam na fila.  
+**Status:** 0.6.0, publicada. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Excluir linha, histórico de versões e o remetente de e-mail continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -275,7 +275,7 @@ Tudo neste corte é web. Não há app desktop nem planilha paralela como fonte d
 
 A aplicação continua em **TypeScript**, com **Next.js** e **React**, que já estão na pasta do projeto. Uma linguagem só cobre a tela e o servidor. Trocar de linguagem não poupa a cota da Vercel: o que gasta essa cota é publicar, executar função e transferir arquivo. O esforço fica no código da aplicação. Serviço extra da plataforma só entra se o código não der conta.
 
-Usuários, versão, fila de entregas, logs e saúde do ambiente são a operação da aplicação. Qualquer sistema pode ter essa camada. O escopo do Heladri permanece o da seção 1: a planilha de licitação do SESC. O catálogo da esteira lista só os passos deste portal. Até o Supabase existir, essa operação grava num arquivo local da máquina, fora do Git.
+Usuários, versão, fila de entregas, logs e saúde do ambiente são a operação da aplicação. Qualquer sistema pode ter essa camada. O escopo do Heladri permanece o da seção 1: a planilha de licitação do SESC. O catálogo da esteira lista só os passos deste portal. Com a chave do Supabase configurada, essa operação grava no Postgres e no Storage. Sem a chave, grava num arquivo local da máquina, fora do Git.
 
 O gerador parte do pacote original, aplica valores e remove as linhas excluídas. Não monta um arquivo novo a partir de linhas soltas. Ler a planilha, checar o papel no servidor, guardar versão e gerar o arquivo de volta são código deste portal.
 
@@ -300,7 +300,7 @@ O envio do e-mail de confirmação e o de recuperação de senha ainda não têm
 
 O ciclo de construir e testar roda na máquina. Nada disso publica na Vercel.
 
-O caminho fechado é um container **Docker** que sobe o Next.js e aponta para o Supabase na nuvem. Vale o equivalente mais leve: o servidor local do Next.js (`pnpm dev`) com as mesmas variáveis de ambiente. Os dois poupam a Vercel pelo mesmo motivo: não fazem deploy.
+O caminho em uso é o servidor local do Next.js (`pnpm dev`), com as mesmas variáveis de ambiente da publicação. Um container Docker foi considerado e não entrou: não há imagem neste repositório. Os dois poupariam a Vercel pelo mesmo motivo, o de não fazer deploy no dia a dia.
 
 ### 9.3 Conexão com o banco, sem senha no código
 
@@ -316,24 +316,22 @@ O painel entrega duas chaves. O código lê as duas por variável de ambiente, n
 | Chave secreta (service role) | nome sem prefixo `NEXT_PUBLIC_` | Só o servidor. Ela atravessa a política de linha do Supabase, então a checagem de papel continua no código, antes da consulta |
 | Chave publicável (anon) | reservada, sem uso no navegador neste corte | Não vai para o bundle. Prefixo `NEXT_PUBLIC_` publicaria o valor no browser, e este corte não faz isso |
 
-No desenvolvimento, os valores ficam em `.env.local`, ignorado pelo Git. A pessoa copia do painel do Supabase para esse arquivo, na própria máquina. O Docker recebe o mesmo arquivo na hora de rodar (`env_file`). O build da imagem não copia o arquivo para dentro da imagem: um `docker history` não pode mostrar a chave.
+No desenvolvimento, os valores ficam em `.env.local`, ignorado pelo Git. A pessoa copia do painel do Supabase para esse arquivo, na própria máquina.
 
 O repositório versiona `.env.example` só com os nomes, vazios, e um `.gitignore` que cobre `.env`, `.env.local` e `.env*.local`. Chave não se cola em código, em commit, em print de tela compartilhado nem em issue.
 
-Quando a publicação existir, os mesmos nomes são preenchidos nas variáveis do projeto na Vercel. O repositório continua sem valor. Isso fica para o passo em que o Git for ligado à Vercel, não para o dia a dia do desenvolvimento.
+Na publicação, os mesmos nomes estão nas variáveis do projeto na Vercel. O repositório continua sem valor.
 
 ### 9.4 Publicação e conta da esteira
 
-Em produção, a aplicação roda na **Vercel**. O deploy é o da própria Vercel: o Git envia o código e ela publica. Não há servidor próprio nem container no ar. O plano é o gratuito. O Docker fica só na máquina de quem desenvolve. Para a cota durar:
+Em produção, a aplicação roda na **Vercel**. O deploy é o da própria Vercel: o Git envia o código e ela publica. Não há servidor próprio nem container no ar. O plano é o gratuito. Para a cota durar:
 
 - desenvolvimento não dispara deploy;
 - não se abre Postgres, Blob, KV, cron nem otimização de imagem da Vercel — a imagem do Next.js já está sem essa otimização;
 - não se liga produto extra da Vercel enquanto o código e o Supabase resolverem o caso;
 - o arquivo da planilha não transita por armazenamento da Vercel.
 
-A conta que cria e liga Supabase, Vercel e o repositório Git é **heladriapp@gmail.com**, já autenticada no navegador. Segredo dessa conta não entra neste documento. A grafia saiu da fala «Eladriepp arroba gmail.com»; confirmar o endereço antes de criar os projetos.
-
-O diretório Heladri já tem Git próprio, ainda sem commit e sem remoto. O remoto precisa ser um que a Vercel ligue por Git; com essa conta Google, o caminho prático é o GitHub. Esse passo não trava o corte da planilha.
+A conta que liga Supabase, Vercel e o repositório Git é **heladriapp@gmail.com**. Segredo dessa conta não entra neste documento. O remoto em uso é o GitHub `heladriapp-spec/app`. A publicação lê esse Git.
 
 ## 10. Critérios de aceite
 
@@ -378,30 +376,43 @@ Fica para depois, e só começa quando o arquivo baixado for aceito pelo SESC:
 
 A planilha oficial do SESC continua um arquivo de entrada e saída fiel. A referência de como o valor nasce, neste trabalho, é o motor da seção 14. Ele orienta o preenchimento. Não gera outra planilha no lugar da que o SESC enviou.
 
-## 13. Próximos passos da esteira
+## 13. Depara da esteira
 
-A ordem abaixo é a fila que o portal mostra em Implantações e na Esteira, depois da operação 0.1.0. Aprovar uma entrega libera desenvolver aquele passo. Não publica sozinho e não cria conta de serviço.
+A fila abaixo é a que o portal mostra em Implantações e na Esteira. Aprovar uma entrega libera desenvolver aquele passo. Não publica sozinho e não cria conta de serviço.
 
-O extra no item de serviço (seção 6.8) já estava aprovado e passou à frente de Git, Supabase, e-mail e Vercel. Entrou nesta versão, 0.6.0. A fila seguinte continua no repositório e na nuvem.
+O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da planilha, e deixava o motor de rateio como proposta. A maturidade da 0.6.0 adiantou o repositório, o banco e a publicação, e trocou o motor por o preenchimento da própria planilha de cotação.
 
-O corte razoável do MVP, antes de Git, Supabase, e-mail e Vercel, é ver a planilha funcionar nesta máquina:
+### Já implantado
 
-1. Depois do login, a lista dos projetos da pessoa.
-2. **Criar novo projeto**: nome digitado, data informada ou data de hoje, e a opção de carregar a planilha do SESC.
-3. Com o arquivo carregado, a tela web de preenchimento. Quantidade, valor, concluir e baixar vêm no passo seguinte da mesma fila. Até o Supabase existir, projeto e arquivo ficam no armazenamento local, como a operação da 0.1.0.
+| Entrega | Versão prevista | O que está no ar |
+| --- | --- | --- |
+| Operação da aplicação | 0.1.0 | Usuários, versão, implantações, esteira, logs e saúde |
+| Projeto a partir da planilha do SESC | 0.2.0 | Lista, nome, data e upload. A tela nasce do arquivo |
+| Contas criadas pelo administrador | 0.3.0 | Criar, trocar senha e excluir, sem esperar o e-mail |
+| Preenchimento por capítulos | 0.4.0 | Índice à esquerda, verde e laranja, baixar o mesmo arquivo |
+| Rascunho, arquivo referencial e conclusão | 0.5.0 | Rascunho, original guardado e concluir na cópia fiel |
+| Extra no item de serviço | 0.6.0 | Reais, percentual ou os dois. A planilha recebe só o final |
+| Preenchimento da planilha de cotação | 0.6.0 | A cotação deste trabalho abre por capítulos e volta no mesmo arquivo |
+| Repositório Git só do Heladri | 0.7.0 | Remoto `heladriapp-spec/app`, efetivo nesta 0.6.0 |
+| Supabase | 0.8.0 | Postgres e Storage quando a chave existe; pasta local quando não existe. Efetivo nesta 0.6.0 |
+| Publicação na Vercel | 0.10.0 | Sai do Git, sem banco da Vercel. Efetivo nesta 0.6.0 |
 
-Git e Supabase continuam aprovados para desenvolver. Eles não passam na frente desse corte.
+### Ainda na fila
 
-4. Confirmar se o e-mail da esteira é `heladriapp@gmail.com`.
-5. Versionar o Heladri num remoto que a Vercel consiga ligar, na conta acima. O caminho prático é o GitHub.
-6. Criar o projeto no Supabase com essa conta. Copiar URL e chave secreta para `.env.local` na máquina. Não anotar esses valores no repositório.
-7. Subir a aplicação na máquina lendo esse arquivo. Provar que o servidor alcança o Supabase e que o navegador não recebe a chave.
-8. Escolher o remetente do e-mail de confirmação e do esqueci a senha, fora da Vercel, cumprindo as seções 6 e 8.
-9. Ligar o repositório à Vercel com a mesma conta. O primeiro deploy espera o fluxo local de pé. Deploy seguinte sai do Git, não do experimento do dia.
-10. O leitor do Anexo III do Cosmo/Chão já tem coluna marcada na seção 7. Um segundo trabalho do SESC continua necessário, seção 11, antes de generalizar. A esteira não substitui esse segundo arquivo.
-11. O motor de cotação, seção 14, fica para o corte seguinte. Não entra no primeiro deploy.
+1. Remetente de confirmação e de senha. Aprovar pedido e esqueci a senha já existem na tela; o e-mail não sai.
+2. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
+3. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+
+### Fora deste escopo
+
+- Motor de rateio para as colunas F e G. A seção 14 descreve a conta. Este corte não a executa. A pessoa preenche a cotação e a planilha do SESC.
+- Gravar o `.xlsx` numa tabela do Postgres. O arquivo fica no Storage, ou na pasta local.
+- Container Docker. O desenvolvimento é o `pnpm dev`.
+- Leitura de PDF, planta e memorial, e o restante da visão de produto (cliente, fornecedor, cronograma e dashboard da obra).
 
 ## 14. Motor de cotação
+
+Esta seção descreve a conta. Ela não está na fila: o rateio automático saiu deste corte. O que entrou foi preencher a própria planilha de cotação e devolvê-la.
 
 O arquivo `planilha_cotacao_cosmochao-v14.xlsx` é a lógica de cálculo dos valores que devem entrar na planilha do SESC deste trabalho. As abas se apresentam como v12.0; o nome do arquivo é a referência. É o concreto do que `docs/prd_avancado.md` chama de base de preços, status e cálculo automático. Não é a planilha que volta para o SESC.
 

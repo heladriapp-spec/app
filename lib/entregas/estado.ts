@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<StatusEntregaBase, string> = {
   nesta_versao: 'Implantado em DEV',
   planejado: 'Planejado',
   proposto: 'Proposto',
+  fora_de_escopo: 'Fora de escopo',
 }
 
 const DECISAO_LABEL: Record<StatusEntregaDecisao, string> = {
@@ -50,7 +51,10 @@ export function resolverEntregas(estados: EntregaEstadoRow[]): EntregaResolvida[
 
 export function filaProximas(resolvidas: EntregaResolvida[]): EntregaResolvida[] {
   const ativas = resolvidas.filter(
-    (item) => !item.implantado && item.statusDecisao !== 'rollback',
+    (item) =>
+      !item.implantado &&
+      item.statusBase !== 'fora_de_escopo' &&
+      item.statusDecisao !== 'rollback',
   )
   const adiadas = ativas
     .filter((item) => item.statusDecisao === 'adiado')

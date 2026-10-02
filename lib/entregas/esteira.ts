@@ -68,6 +68,9 @@ function textoProximoPassoItem(
   bloqueado: boolean,
   motivos: string[],
 ): string {
+  if (item.statusBase === 'fora_de_escopo') {
+    return 'Fora deste corte. A esteira não desenvolve esta entrega.'
+  }
   if (item.statusDecisao === 'pedido_reversao') {
     return 'Pedido de reversão registrado. A esteira não desfaz o código sozinha.'
   }
@@ -98,6 +101,7 @@ function textoProximoPassoItem(
 }
 
 function aprovacaoDoItem(item: EntregaResolvida, gate: GateEsteira | null): string {
+  if (item.statusBase === 'fora_de_escopo') return 'Nenhuma. Saiu do escopo.'
   if (item.statusBase === 'validado_producao') return 'Nenhuma'
   if (item.statusDecisao === 'rollback' || item.statusDecisao === 'pedido_reversao') {
     return 'Tratar no portal'
@@ -118,6 +122,12 @@ export function gatesDaEntrega(item: EntregaResolvida): GateEsteiraEstado[] {
   const marcar = (status: StatusGateEsteira): GateEsteiraEstado[] =>
     GATES_ESTEIRA.map((gate) => ({ id: gate.id, status }))
 
+  if (item.statusBase === 'fora_de_escopo') {
+    return GATES_ESTEIRA.map((gate) => ({
+      id: gate.id,
+      status: gate.id === 'desenvolvimento' ? 'bloqueado' : 'pendente',
+    }))
+  }
   if (item.statusDecisao === 'pedido_reversao') {
     return GATES_ESTEIRA.map((gate) => ({
       id: gate.id,
@@ -212,7 +222,10 @@ function relatorioDaRelease(
 function motivoOrdem(atual: EntregaResolvida[], catalogoIds: string[]) {
   const adiadas = atual.filter((item) => item.statusDecisao === 'adiado').map((item) => item.nome)
   const fora = CATALOGO_ENTREGAS.filter(
-    (item) => !item.implantado && atual.every((row) => row.id !== item.id),
+    (item) =>
+      !item.implantado &&
+      item.statusBase !== 'fora_de_escopo' &&
+      atual.every((row) => row.id !== item.id),
   )
   const partes: string[] = []
   if (adiadas.length > 0) partes.push(`Passou à frente: ${adiadas.join('; ')}.`)

@@ -1,8 +1,8 @@
 /** Versão estável visível na UI. Manter igual ao package.json. */
 export const VERSAO_APP = '0.6'
 export const VERSAO_SEMVER = '0.6.0'
-/** Ainda não há publicação. Não usar a versão de DEV no lugar desta. */
-export const VERSAO_PRODUCAO = 'não publicada'
+/** Versão que a publicação na Vercel está servindo. */
+export const VERSAO_PRODUCAO = '0.6.0'
 
 export function shaDoBuild(): string {
   const bruto =

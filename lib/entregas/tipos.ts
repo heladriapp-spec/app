@@ -7,6 +7,7 @@ export type StatusEntregaBase =
   | 'nesta_versao'
   | 'planejado'
   | 'proposto'
+  | 'fora_de_escopo'
 
 export type StatusEntregaDecisao =
   | 'aguardando'

@@ -101,6 +101,7 @@ export default async function ImplementacoesPage({
   const { resolvidas, fila, parecer } = await carregarResolvidas()
   const lista = visao === 'releases' ? fila : resolvidas.filter((item) => item.tipo === visao)
   const jaSaiu = implantadas(resolvidas)
+  const foraDeEscopo = resolvidas.filter((item) => item.statusBase === 'fora_de_escopo')
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,6 +158,17 @@ export default async function ImplementacoesPage({
           )
         })}
       </div>
+
+      {visao === 'releases' && foraDeEscopo.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-medium">Fora de escopo</h2>
+          <div className="grid gap-3">
+            {foraDeEscopo.map((item) => (
+              <Cartao key={item.id} item={item} visao={visao} acoes={false} bloqueado={false} motivos={[]} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {visao === 'releases' && jaSaiu.length > 0 ? (
         <section className="flex flex-col gap-3">
