@@ -76,7 +76,11 @@ export async function removerPlanilha(id: string, papel: PapelPlanilha) {
     await resposta.body?.cancel()
     return
   }
-  if (!resposta.ok) throw await falha(resposta)
+  if (!resposta.ok) {
+    const erro = await falha(resposta)
+    if (/object not found/i.test(erro.message)) return
+    throw erro
+  }
   await resposta.body?.cancel()
 }
 
