@@ -26,15 +26,17 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CircleDashed,
   HardHat,
   Package,
   PenLine,
   Plus,
   Trash2,
+  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 type ValorItem = {
@@ -136,13 +138,15 @@ export function CotacaoTela({
     <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
-      <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
       <FaixaCapitulos
         capitulos={capitulos}
         atualId={atual.id}
         cotacao={cotacao}
         valores={valores}
         onAbrir={setAberto}
+        arquivo={
+          <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
+        }
       />
       <div className="flex flex-col gap-4">
         {capitulos.map((item) => {
@@ -251,12 +255,14 @@ function FaixaCapitulos({
   cotacao,
   valores,
   onAbrir,
+  arquivo,
 }: {
   capitulos: Capitulo[]
   atualId: string
   cotacao: CotacaoLida
   valores: Valores
   onAbrir: (id: string) => void
+  arquivo?: ReactNode
 }) {
   const grupos: { nome: string; itens: { item: Capitulo; indice: number }[] }[] = []
   capitulos.forEach((item, indice) => {
@@ -266,23 +272,28 @@ function FaixaCapitulos({
   })
 
   return (
-    <nav aria-label="Capítulos" className="flex flex-col gap-4">
-      <p className="text-xs text-muted-foreground">
-        Verde, preenchido. Laranja, ainda falta valor. Vermelho, há divergência.
-      </p>
+    <nav aria-label="Capítulos" className="flex flex-col gap-3 rounded-2xl border bg-card p-3 shadow-sm sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">{arquivo}</div>
+        <LegendaTons />
+      </div>
       {grupos.map((grupo) => {
         const Icone = ICONE_KICKER[grupo.nome] ?? BookOpen
         return (
-          <div key={grupo.nome} className="flex items-start gap-3">
-            <p className="flex shrink-0 items-center gap-1.5 pt-2 text-[0.65rem] font-semibold tracking-[0.14em] whitespace-nowrap text-muted-foreground uppercase">
-              <Icone className="size-3.5 text-primary" aria-hidden />
-              {grupo.nome}
-            </p>
-            <div className="flex min-w-0 flex-1 gap-2.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+          <div key={grupo.nome} className="flex items-start gap-2.5">
+            <span
+              title={grupo.nome}
+              className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"
+            >
+              <Icone className="size-4" aria-hidden />
+              <span className="sr-only">{grupo.nome}</span>
+            </span>
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
               {grupo.itens.map(({ item, indice }) => {
                 const tom = tomDoCapitulo(item, cotacao, valores)
                 const ativo = item.id === atualId
                 const adesao = adesaoDoCapitulo(item, cotacao, valores)
+                const falta = adesao != null && adesao.percentual < 100
                 return (
                   <button
                     key={item.id}
@@ -291,12 +302,12 @@ function FaixaCapitulos({
                     onClick={() => onAbrir(item.id)}
                     className={classeChip(tom, ativo)}
                     aria-current={ativo ? 'page' : undefined}
+                    aria-label={rotuloCapitulo(indice, item.nome, tom, adesao?.percentual)}
                   >
-                    <span className="text-xs tabular-nums opacity-60">{indice + 1}</span>
-                    {tom === 'verde' ? <Check className="size-3.5 shrink-0" aria-hidden /> : null}
-                    <span className="truncate">{item.nome}</span>
-                    {adesao ? (
-                      <span className="text-[0.7rem] tabular-nums opacity-70">{adesao.percentual}%</span>
+                    <MarcaTom tom={tom} indice={indice} completo={!falta} />
+                    <span className="min-w-0 flex-1 truncate">{item.nome}</span>
+                    {falta ? (
+                      <span className="shrink-0 text-[0.7rem] tabular-nums">{adesao.percentual}%</span>
                     ) : null}
                   </button>
                 )
@@ -309,14 +320,65 @@ function FaixaCapitulos({
   )
 }
 
+function LegendaTons() {
+  const itens: { tom: TomCapitulo; rotulo: string; Icone: LucideIcon }[] = [
+    { tom: 'verde', rotulo: 'Preenchido', Icone: Check },
+    { tom: 'laranja', rotulo: 'Falta valor', Icone: CircleDashed },
+    { tom: 'vermelho', rotulo: 'Divergência', Icone: TriangleAlert },
+  ]
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Situação dos capítulos">
+      {itens.map(({ tom, rotulo, Icone }) => (
+        <li key={tom} className={cn('inline-flex items-center gap-1.5 text-xs', corTom(tom))}>
+          <Icone className="size-3.5 shrink-0" aria-hidden />
+          {rotulo}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MarcaTom({ tom, indice, completo }: { tom: TomCapitulo; indice: number; completo: boolean }) {
+  if (tom === 'vermelho') return <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+  if (tom === 'laranja') return <CircleDashed className="size-3.5 shrink-0" aria-hidden />
+  if (tom === 'verde' && completo) return <Check className="size-3.5 shrink-0" aria-hidden />
+  return (
+    <span className="w-4 shrink-0 text-center text-[0.7rem] font-medium tabular-nums opacity-60">
+      {indice + 1}
+    </span>
+  )
+}
+
+function rotuloCapitulo(indice: number, nome: string, tom: TomCapitulo, percentual?: number) {
+  const situacao =
+    tom === 'vermelho'
+      ? 'divergência'
+      : tom === 'laranja'
+        ? 'falta valor'
+        : tom === 'verde' && (percentual == null || percentual >= 100)
+          ? 'preenchido'
+          : tom === 'verde'
+            ? 'em andamento'
+            : 'leitura'
+  const progresso = percentual != null && percentual < 100 ? `, ${percentual}%` : ''
+  return `${indice + 1}. ${nome}, ${situacao}${progresso}`
+}
+
+function corTom(tom: TomCapitulo) {
+  if (tom === 'verde') return 'text-emerald-800'
+  if (tom === 'laranja') return 'text-amber-800'
+  if (tom === 'vermelho') return 'text-red-800'
+  return 'text-muted-foreground'
+}
+
 function classeChip(tom: TomCapitulo, ativo: boolean) {
   return cn(
-    'inline-flex max-w-60 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-sm transition-colors',
-    tom === 'verde' && 'border-emerald-500/70 bg-emerald-50 text-emerald-950',
-    tom === 'laranja' && 'border-amber-500/80 bg-amber-50 text-amber-950',
-    tom === 'vermelho' && 'border-red-500/70 bg-red-50 text-red-950',
-    tom === 'neutro' && 'border-border bg-card text-foreground',
-    ativo && 'ring-2 ring-primary',
+    'flex w-full min-w-0 items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-sm transition-colors sm:w-52',
+    tom === 'verde' && 'border-emerald-500/50 bg-emerald-50 text-emerald-950',
+    tom === 'laranja' && 'border-amber-500/70 bg-amber-50 text-amber-950',
+    tom === 'vermelho' && 'border-red-500/60 bg-red-50 text-red-950',
+    tom === 'neutro' && 'border-border bg-background text-foreground',
+    ativo && 'ring-2 ring-primary ring-offset-1 ring-offset-card',
   )
 }
 
@@ -397,25 +459,24 @@ function BarraConclusao({
 }) {
   const adesao = adesaoDe(statuses)
   if (!adesao) return null
+  const explicacao = `${adesao.aderentes} de ${adesao.total} ${adesao.total === 1 ? 'aderente' : 'aderentes'} em ${nome}. Pendente e divergente ficam de fora.`
   return (
-    <div className={cn('max-w-sm', className)}>
-      <div className="flex items-baseline justify-between gap-3 text-xs">
-        <span className="text-muted-foreground">{rotulo}</span>
-        <span className="font-medium tabular-nums">{adesao.percentual}%</span>
-      </div>
+    <div className={cn('flex max-w-md items-center gap-2.5', className)} title={explicacao}>
+      <span className="w-16 shrink-0 text-xs text-muted-foreground">{rotulo}</span>
       <div
-        className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+        className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-muted"
         role="meter"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={adesao.percentual}
-        aria-label={`${adesao.aderentes} de ${adesao.total} itens aderentes em ${nome}`}
+        aria-label={explicacao}
       >
         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${adesao.percentual}%` }} />
       </div>
-      <p className="mt-1 text-[0.7rem] text-muted-foreground">
-        {`${adesao.aderentes} de ${adesao.total} ${adesao.total === 1 ? 'aderente' : 'aderentes'}. Pendente e divergente ficam de fora.`}
-      </p>
+      <span className="shrink-0 text-xs font-medium tabular-nums">{adesao.percentual}%</span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+        {adesao.aderentes}/{adesao.total}
+      </span>
     </div>
   )
 }

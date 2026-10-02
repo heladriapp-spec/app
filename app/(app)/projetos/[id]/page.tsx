@@ -78,18 +78,13 @@ export default async function ProjetoPage({
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
       {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
-            {lida.cotacao.subtitulo || lida.cotacao.titulo}
-          </p>
-          <CotacaoTela
+        <CotacaoTela
             projetoId={projeto.id}
             arquivoNome={projeto.arquivoNome}
             arquivoGerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
             cotacao={lida.cotacao}
             iniciais={valoresDaCotacao(projeto, lida.cotacao)}
           />
-        </div>
       ) : lida ? (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
