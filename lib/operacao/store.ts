@@ -4,6 +4,7 @@ import { hashSenha } from '@/lib/auth/senha'
 import { cache } from 'react'
 import {
   apagarFora,
+  chamarFuncao,
   colunaQueFalta,
   ehTabelaAusente,
   gravarTabela,
@@ -29,6 +30,16 @@ export type Usuario = {
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senhaHash'>
+
+/** Usado só na validação da senha. Não enviar para páginas. */
+export type UsuarioLogin = {
+  id: string
+  login: string
+  senhaHash: string
+  papel: Papel
+  ativo: boolean
+  ocultarBoasVindas: boolean
+}
 
 export type SituacaoPedido = 'pendente' | 'aprovado' | 'rejeitado'
 
@@ -64,7 +75,10 @@ type Store = {
 }
 
 const ARQUIVO = path.join(process.cwd(), 'data', 'operacao.json')
-const LIMITE_LOGS = 400
+/** Teto temporário. A retenção definitiva fica para uma etapa posterior. */
+const LIMITE_LOGS = 300
+/** O caminho antigo ainda regrava o conjunto. Esta janela evita apagar logs numa escrita que não insere evento. */
+const JANELA_REESCRITA_LOGS = 400
 
 let fila: Promise<unknown> = Promise.resolve()
 
@@ -130,31 +144,121 @@ export function publico(usuario: Usuario): UsuarioPublico {
   return resto
 }
 
-export function registrarNo(
-  store: Store,
-  entrada: Omit<LogRegistro, 'id' | 'em'> & { em?: string },
-) {
+export type EntradaLog = Omit<LogRegistro, 'id' | 'em'> & { em?: string }
+
+function detalheSeguro(bruto: LogRegistro['detalhe']) {
   const detalhe: LogRegistro['detalhe'] = {}
-  for (const [chave, valor] of Object.entries(entrada.detalhe)) {
+  for (const [chave, valor] of Object.entries(bruto)) {
     if (/senha|token|secret|chave|hash/i.test(chave)) continue
     detalhe[chave] = valor
   }
-  store.logs.push({
+  return detalhe
+}
+
+function montarLog(entrada: EntradaLog): LogRegistro {
+  return {
     id: crypto.randomUUID(),
     em: entrada.em ?? new Date().toISOString(),
     nivel: entrada.nivel,
     evento: entrada.evento,
     ator: entrada.ator,
     mensagem: entrada.mensagem,
-    detalhe,
+    detalhe: detalheSeguro(entrada.detalhe),
+  }
+}
+
+function compararLog(a: LogRegistro, b: LogRegistro) {
+  if (a.em < b.em) return -1
+  if (a.em > b.em) return 1
+  if (a.id < b.id) return -1
+  if (a.id > b.id) return 1
+  return 0
+}
+
+function recorteRecente(logs: LogRegistro[]) {
+  if (logs.length <= LIMITE_LOGS) return logs
+  const manter = new Set(
+    [...logs].sort(compararLog).slice(-LIMITE_LOGS).map((item) => item.id),
+  )
+  return logs.filter((item) => manter.has(item.id))
+}
+
+function aplicarLimite(logs: LogRegistro[]) {
+  if (logs.length <= LIMITE_LOGS) return
+  const proximos = recorteRecente(logs)
+  logs.length = 0
+  logs.push(...proximos)
+}
+
+export function registrarNo(store: Store, entrada: EntradaLog) {
+  store.logs.push(montarLog(entrada))
+  aplicarLimite(store.logs)
+}
+
+function enfileirar<T>(fn: () => Promise<T>): Promise<T> {
+  const exec = fila.then(fn)
+  fila = exec.then(
+    () => undefined,
+    () => undefined,
+  )
+  return exec
+}
+
+/**
+ * INSERT de um evento. No Supabase chama `registrar_log` (insere e mantém 300).
+ * No JSON, a fila local lê e grava o arquivo; a regra de negócio não vê o conjunto.
+ * Falha aqui é falha de auditoria: quem chama decide se a operação principal segue.
+ */
+export async function inserirLog(entrada: EntradaLog): Promise<void> {
+  const registro = montarLog(entrada)
+  if (supabaseConfigurado()) {
+    await chamarFuncao<void>('registrar_log', {
+      p_id: registro.id,
+      p_em: registro.em,
+      p_nivel: registro.nivel,
+      p_evento: registro.evento,
+      p_ator: registro.ator,
+      p_mensagem: registro.mensagem,
+      p_detalhe: registro.detalhe,
+    })
+    return
+  }
+  await enfileirar(async () => {
+    const disco = await lerDisco()
+    const store = disco ?? (await semear())
+    if (!Array.isArray(store.logs)) store.logs = []
+    store.logs.push(registro)
+    aplicarLimite(store.logs)
+    await gravarDisco(store)
   })
-  if (store.logs.length > LIMITE_LOGS) {
-    store.logs.splice(0, store.logs.length - LIMITE_LOGS)
+}
+
+function textoDiagnostico(erro: unknown) {
+  const bruto = erro instanceof Error ? erro.message : 'falha sem mensagem'
+  return bruto
+    .replace(/\s+/g, ' ')
+    .replace(/senha|token|secret|hash|bearer|chave/gi, '[omitido]')
+    .slice(0, 200)
+}
+
+/** A operação principal segue. A falha fica no log do processo, sem dado sensível. */
+export async function registrarEvento(entrada: EntradaLog): Promise<void> {
+  try {
+    await inserirLog(entrada)
+  } catch (erro) {
+    const codigo =
+      erro && typeof erro === 'object' && 'codigo' in erro && typeof erro.codigo === 'string'
+        ? erro.codigo
+        : ''
+    const evento = entrada.evento.replace(/[^\w.-]/g, '').slice(0, 80) || 'desconhecido'
+    console.error(
+      `[auditoria] falha ao gravar ${evento}${codigo ? ` (${codigo})` : ''}: ${textoDiagnostico(erro)}`,
+    )
   }
 }
 
 export async function alterarStore<T>(fn: (store: Store) => T | Promise<T>): Promise<T> {
-  const exec = fila.then(async () => {
+  return enfileirar(async () => {
     let store: Store
     if (supabaseConfigurado()) store = await lerNuvem()
     else {
@@ -166,11 +270,6 @@ export async function alterarStore<T>(fn: (store: Store) => T | Promise<T>): Pro
     else await gravarDisco(store)
     return resultado
   })
-  fila = exec.then(
-    () => undefined,
-    () => undefined,
-  )
-  return exec
 }
 
 /** Lê o arquivo local uma vez por requisição. Não é cache entre instâncias. */
@@ -213,6 +312,63 @@ async function lerUsuariosPublicos(filtro: string) {
     const linhas = await lerTabela<UsuarioPublicoRow>('usuarios', `select=${semOcultar}&${filtro}`)
     return linhas.map(usuarioPublicoDe)
   }
+}
+
+const COLUNAS_LOGIN = 'id,login,senha_hash,papel,ativo,ocultar_boas_vindas'
+
+function usuarioLoginDe(item: UsuarioLoginRow): UsuarioLogin {
+  return {
+    id: item.id,
+    login: item.login,
+    senhaHash: item.senha_hash,
+    papel: item.papel,
+    ativo: item.ativo,
+    ocultarBoasVindas: item.ocultar_boas_vindas === true,
+  }
+}
+
+async function lerUsuarioParaLogin(filtro: string) {
+  const semOcultar = COLUNAS_LOGIN.replace(',ocultar_boas_vindas', '')
+  try {
+    const linhas = await lerTabela<UsuarioLoginRow>('usuarios', `select=${COLUNAS_LOGIN}&${filtro}`)
+    return linhas.map(usuarioLoginDe)
+  } catch (erro) {
+    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
+    const linhas = await lerTabela<UsuarioLoginRow>('usuarios', `select=${semOcultar}&${filtro}`)
+    return linhas.map(usuarioLoginDe)
+  }
+}
+
+async function storeLocalParaLogin(): Promise<Store> {
+  const disco = await lerDisco()
+  if (disco) return completar(disco)
+  return enfileirar(async () => {
+    const deNovo = await lerDisco()
+    if (deNovo) return completar(deNovo)
+    const inicial = await semear()
+    await gravarDisco(inicial)
+    return inicial
+  })
+}
+
+/** Uma linha, com senha_hash. No Supabase, leitura vazia não cria adm nem convidado. */
+export async function buscarUsuarioParaLogin(login: string): Promise<UsuarioLogin | null> {
+  if (!/^[a-z0-9._-]{1,64}$/.test(login)) return null
+  if (!supabaseConfigurado()) {
+    const store = await storeLocalParaLogin()
+    const usuario = store.usuarios.find((item) => item.login === login)
+    if (!usuario) return null
+    return {
+      id: usuario.id,
+      login: usuario.login,
+      senhaHash: usuario.senhaHash,
+      papel: usuario.papel,
+      ativo: usuario.ativo,
+      ocultarBoasVindas: usuario.ocultarBoasVindas,
+    }
+  }
+  const lista = await lerUsuarioParaLogin(`login=eq.${login}&limit=1`)
+  return lista[0] ?? null
 }
 
 export async function buscarUsuarioPublicoPorId(id: string): Promise<UsuarioPublico | null> {
@@ -275,11 +431,11 @@ function pedidoDe(item: PedidoRow): PedidoAcesso {
 export async function listarLogs(): Promise<LogRegistro[]> {
   if (!supabaseConfigurado()) {
     const store = await lerOperacaoLocal()
-    return store.logs
+    return recorteRecente(store.logs)
   }
   const linhas = await lerTabela<LogRow>(
     'logs',
-    'select=id,em,nivel,evento,ator,mensagem,detalhe&order=em.desc&limit=400',
+    `select=id,em,nivel,evento,ator,mensagem,detalhe&order=em.desc&limit=${LIMITE_LOGS}`,
   )
   return linhas.reverse().map(logDe)
 }
@@ -288,12 +444,14 @@ export async function listarAtoresComLogin(): Promise<Set<string>> {
   if (!supabaseConfigurado()) {
     const store = await lerOperacaoLocal()
     return new Set(
-      store.logs.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator as string),
+      recorteRecente(store.logs)
+        .filter((item) => item.evento === 'USER_LOGIN' && item.ator)
+        .map((item) => item.ator as string),
     )
   }
   const linhas = await lerTabela<{ evento: string; ator: string | null }>(
     'logs',
-    'select=evento,ator&order=em.desc&limit=400',
+    `select=evento,ator&order=em.desc&limit=${LIMITE_LOGS}`,
   )
   return new Set(
     linhas.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator as string),
@@ -337,6 +495,15 @@ export async function listarEstadosEntrega(): Promise<EntregaEstadoRow[]> {
     return store.estados
   }
   return lerTabela<EntregaEstadoRow>('entrega_estados', 'select=entrega_id,status,posicao,atualizado_por,atualizado_em')
+}
+
+type UsuarioLoginRow = {
+  id: string
+  login: string
+  senha_hash: string
+  papel: Papel
+  ativo: boolean
+  ocultar_boas_vindas?: boolean | null
 }
 
 type UsuarioRow = {
@@ -390,7 +557,7 @@ async function lerNuvem(): Promise<Store> {
     lerTabela<UsuarioRow>('usuarios', 'select=*&order=login.asc'),
     lerTabela<PedidoRow>('pedidos_acesso', 'select=*&order=criado_em.asc'),
     lerTabela<EntregaEstadoRow>('entrega_estados', 'select=*'),
-    lerTabela<LogRow>('logs', 'select=*&order=em.desc&limit=400'),
+    lerTabela<LogRow>('logs', `select=*&order=em.desc&limit=${JANELA_REESCRITA_LOGS}`),
     lerLinks(),
   ])
   if (usuarios.length === 0) {

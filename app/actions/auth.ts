@@ -13,7 +13,13 @@ import { acharLink, emitirLink, linkRecente, motivoDoLink, tokenInformado } from
 import { confereSenha, consumirTempoDeSenha, hashSenha } from '@/lib/auth/senha'
 import { enviarRecuperacao } from '@/lib/email/mensagem'
 import { remetenteConfigurado } from '@/lib/email/smtp'
-import { alterarStore, registrarNo } from '@/lib/operacao/store'
+import {
+  alterarStore,
+  buscarUsuarioParaLogin,
+  registrarEvento,
+  registrarNo,
+  type UsuarioLogin,
+} from '@/lib/operacao/store'
 import { headers } from 'next/headers'
 import { redirect, unstable_rethrow } from 'next/navigation'
 
@@ -26,98 +32,84 @@ export async function entrar(formData: FormData) {
   const recebidos = await headers()
   const ip = ipDoCabecalho(recebidos.get('x-forwarded-for'), recebidos.get('x-real-ip'))
 
-  let resultado: { ok: false } | { ok: true; id: string; ocultarBoasVindas: boolean }
+  let entrou: { id: string; login: string; papel: UsuarioLogin['papel']; ocultarBoasVindas: boolean } | null =
+    null
   try {
     if (await loginBloqueado(login, ip)) {
-      await alterarStore((store) => {
-        registrarNo(store, {
-          nivel: 'alerta',
-          evento: 'LOGIN_RATE_LIMITED',
-          ator: null,
-          mensagem: 'Tentativa de login recusada.',
-          detalhe: { login },
-        })
+      await registrarEvento({
+        nivel: 'alerta',
+        evento: 'LOGIN_RATE_LIMITED',
+        ator: null,
+        mensagem: 'Tentativa de login recusada.',
+        detalhe: { login },
       })
       redirect(`/login?erro=${encodeURIComponent(ESPERA)}`)
     }
-    resultado = await alterarStore(async (store) => {
-      const usuario = store.usuarios.find((item) => item.login === login)
-      let senhaConfere = false
-      if (usuario) senhaConfere = await confereSenha(senha, usuario.senhaHash)
-      else await consumirTempoDeSenha(senha)
-      if (!usuario || !senhaConfere) {
-        registrarNo(store, {
-          nivel: 'alerta',
-          evento: 'USER_LOGIN_FAILED',
-          ator: null,
-          mensagem: 'Tentativa de login recusada.',
-          detalhe: { login },
-        })
-        return { ok: false as const }
-      }
-      if (!usuario.ativo) {
-        registrarNo(store, {
-          nivel: 'alerta',
-          evento: 'USER_LOGIN_FAILED',
-          ator: usuario.login,
-          mensagem: 'Conta desativada tentou entrar.',
-          detalhe: { login },
-        })
-        return { ok: false as const }
-      }
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_LOGIN',
-        ator: usuario.login,
-        mensagem: `${usuario.login} entrou.`,
-        detalhe: { papel: usuario.papel },
-      })
-      return { ok: true as const, id: usuario.id, ocultarBoasVindas: usuario.ocultarBoasVindas }
-    })
-  } catch (error) {
-    unstable_rethrow(error)
-    redirect(
-      `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
-    )
-  }
-
-  if (!resultado.ok) {
-    try {
+    const usuario = await buscarUsuarioParaLogin(login)
+    const senhaConfere = usuario
+      ? await confereSenha(senha, usuario.senhaHash)
+      : await consumirTempoDeSenha(senha).then(() => false)
+    if (!usuario || !senhaConfere) {
       await registrarFalhaDeLogin(login, ip)
-    } catch (error) {
-      unstable_rethrow(error)
-      redirect(
-        `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
-      )
+      await registrarEvento({
+        nivel: 'alerta',
+        evento: 'USER_LOGIN_FAILED',
+        ator: null,
+        mensagem: 'Tentativa de login recusada.',
+        detalhe: { login },
+      })
+      redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
     }
-    redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
-  }
-  try {
+    if (!usuario.ativo) {
+      await registrarFalhaDeLogin(login, ip)
+      await registrarEvento({
+        nivel: 'alerta',
+        evento: 'USER_LOGIN_FAILED',
+        ator: usuario.login,
+        mensagem: 'Conta desativada tentou entrar.',
+        detalhe: { login },
+      })
+      redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
+    }
     await limparFalhasDeLogin(login)
+    entrou = {
+      id: usuario.id,
+      login: usuario.login,
+      papel: usuario.papel,
+      ocultarBoasVindas: usuario.ocultarBoasVindas,
+    }
   } catch (error) {
     unstable_rethrow(error)
+    const bruto = error instanceof Error ? error.message : 'falha sem mensagem'
+    const texto = bruto.replace(/\s+/g, ' ').replace(/senha|token|secret|hash|bearer|chave/gi, '[omitido]').slice(0, 200)
+    console.error(`[login] não foi possível concluir a entrada: ${texto}`)
     redirect(
       `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
     )
   }
 
-  await gravarSessao(resultado.id)
-  if (resultado.ocultarBoasVindas) await limparRecadoDeEntrada()
+  await gravarSessao(entrou.id)
+  if (entrou.ocultarBoasVindas) await limparRecadoDeEntrada()
   else await marcarRecadoDeEntrada()
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_LOGIN',
+    ator: entrou.login,
+    mensagem: `${entrou.login} entrou.`,
+    detalhe: { papel: entrou.papel },
+  })
   redirect('/')
 }
 
 export async function sair() {
   const usuario = await usuarioDaSessao()
   if (usuario) {
-    await alterarStore((store) => {
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_LOGOUT',
-        ator: usuario.login,
-        mensagem: `${usuario.login} saiu.`,
-        detalhe: {},
-      })
+    await registrarEvento({
+      nivel: 'info',
+      evento: 'USER_LOGOUT',
+      ator: usuario.login,
+      mensagem: `${usuario.login} saiu.`,
+      detalhe: {},
     })
   }
   await limparSessao()
