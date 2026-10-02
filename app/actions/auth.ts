@@ -32,6 +32,8 @@ import { redirect, unstable_rethrow } from 'next/navigation'
 
 const RECUSA = 'Usuário ou senha incorretos.'
 const ESPERA = 'Muitas tentativas. Espere alguns minutos e tente de novo.'
+const CONTA_BLOQUEADA = 'Usuário bloqueado'
+const CONTA_DESATIVADA = 'Conta desativada'
 
 export async function entrar(formData: FormData) {
   const login = String(formData.get('login') ?? '').trim().toLowerCase()
@@ -73,16 +75,16 @@ export async function entrar(formData: FormData) {
       redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
     }
     if (usuario.situacao !== 'ativa') {
+      const bloqueada = usuario.situacao === 'bloqueada'
       await registrarFalhaDeLogin(login, ip)
       await registrarEvento({
         nivel: 'alerta',
         evento: 'USER_LOGIN_FAILED',
         ator: usuario.login,
-        mensagem:
-          usuario.situacao === 'bloqueada' ? 'Conta bloqueada tentou entrar.' : 'Conta desativada tentou entrar.',
+        mensagem: bloqueada ? 'Conta bloqueada tentou entrar.' : 'Conta desativada tentou entrar.',
         detalhe: { login },
       })
-      redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
+      redirect(`/login?erro=${encodeURIComponent(bloqueada ? CONTA_BLOQUEADA : CONTA_DESATIVADA)}`)
     }
     await limparFalhasDeLogin(login)
     entrou = {

@@ -1,16 +1,23 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { CircleCheck, Clock } from 'lucide-react'
+import { CircleCheck, CircleX, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-type Fase = 'oculto' | 'processando' | 'concluida' | 'saindo' | 'encerrada'
+type Fase = 'oculto' | 'processando' | 'concluida' | 'saindo' | 'encerrada' | 'bloqueada' | 'desativada'
 
 const TEXTO: Record<Exclude<Fase, 'oculto'>, string> = {
   processando: 'Processando',
   concluida: 'Ação concluída',
   saindo: 'Encerrando sessão',
   encerrada: 'Sessão encerrada',
+  bloqueada: 'Usuário bloqueado',
+  desativada: 'Conta desativada',
+}
+
+const RECUSA_DE_CONTA: Record<string, 'bloqueada' | 'desativada'> = {
+  'Usuário bloqueado': 'bloqueada',
+  'Conta desativada': 'desativada',
 }
 
 type Modo = 'acao' | 'sair' | 'silencioso'
@@ -36,13 +43,18 @@ function ehPlanilha(input: RequestInfo | URL, init?: RequestInit) {
   return method === 'POST' && /\/api\/projetos\/[\w-]+\/planilha(?:\?|$)/.test(url)
 }
 
-function temErro(redirecionamento: string) {
+function mensagemDeErro(redirecionamento: string) {
   const caminho = redirecionamento.split(';')[0]
-  if (!caminho) return false
+  if (!caminho) return ''
   try {
-    return new URL(caminho, window.location.origin).searchParams.has('erro')
+    return new URL(caminho, window.location.origin).searchParams.get('erro') ?? ''
   } catch {
-    return caminho.includes('erro=')
+    const bruto = /(?:^|[?&])erro=([^&;]*)/.exec(caminho)?.[1] ?? ''
+    try {
+      return decodeURIComponent(bruto.replace(/\+/g, ' '))
+    } catch {
+      return bruto
+    }
   }
 }
 
@@ -92,7 +104,9 @@ function instalar() {
     try {
       const resposta = await original(input, init)
       const redirecionamento = acao ? (resposta.headers.get('x-action-redirect') ?? '') : ''
-      if (!resposta.ok || temErro(redirecionamento)) publicar('oculto')
+      const recusa = RECUSA_DE_CONTA[mensagemDeErro(redirecionamento)]
+      if (recusa) publicar(recusa)
+      else if (!resposta.ok || mensagemDeErro(redirecionamento)) publicar('oculto')
       else publicar(sair ? 'encerrada' : 'concluida')
       return resposta
     } catch (erro) {
@@ -114,13 +128,15 @@ export function AvisoAcao() {
   }, [])
 
   useEffect(() => {
-    if (fase !== 'concluida' && fase !== 'encerrada') return
-    const timer = window.setTimeout(() => setFase('oculto'), 1600)
+    if (fase !== 'concluida' && fase !== 'encerrada' && fase !== 'bloqueada' && fase !== 'desativada') return
+    const espera = fase === 'bloqueada' || fase === 'desativada' ? 2400 : 1600
+    const timer = window.setTimeout(() => setFase('oculto'), espera)
     return () => window.clearTimeout(timer)
   }, [fase])
 
   if (fase === 'oculto') return null
   const girando = fase === 'processando' || fase === 'saindo'
+  const recusa = fase === 'bloqueada' || fase === 'desativada'
 
   return (
     <div
@@ -133,16 +149,20 @@ export function AvisoAcao() {
         <span
           className={cn(
             'flex size-20 items-center justify-center rounded-full',
-            girando ? 'bg-primary/10 text-primary' : 'bg-emerald-100 text-emerald-700',
+            girando && 'bg-primary/10 text-primary',
+            recusa && 'bg-red-100 text-red-700',
+            !girando && !recusa && 'bg-emerald-100 text-emerald-700',
           )}
         >
           {girando ? (
             <Clock className="size-10 animate-spin" aria-hidden />
+          ) : recusa ? (
+            <CircleX className="size-10" aria-hidden />
           ) : (
             <CircleCheck className="size-10" aria-hidden />
           )}
         </span>
-        <p className="text-xl font-semibold tracking-tight">{TEXTO[fase]}</p>
+        <p className={cn('text-xl font-semibold tracking-tight', recusa && 'text-red-700')}>{TEXTO[fase]}</p>
       </div>
     </div>
   )
