@@ -210,7 +210,7 @@ export async function criarUsuario(formData: FormData) {
   const email = emailBruto || null
   if (email && !email.includes('@')) voltar('Informe um e-mail válido ou deixe em branco.')
 
-  const erro = await alterarStore((store) => {
+  const erro = await alterarStore(async (store) => {
     if (store.usuarios.some((item) => item.login === login)) {
       return 'Este usuário já existe.'
     }
@@ -227,7 +227,7 @@ export async function criarUsuario(formData: FormData) {
       email,
       celular: celular || null,
       login,
-      senhaHash: hashSenha(senha),
+      senhaHash: await hashSenha(senha),
       papel,
       ativo: true,
       origem: 'pedido',
@@ -253,10 +253,10 @@ export async function alterarSenha(formData: FormData) {
   const senha = senhaInformada(formData)
 
   try {
-    const erro = await alterarStore((store) => {
+    const erro = await alterarStore(async (store) => {
       const usuario = store.usuarios.find((item) => item.id === id)
       if (!usuario) return 'Usuário não encontrado.'
-      usuario.senhaHash = hashSenha(senha)
+      usuario.senhaHash = await hashSenha(senha)
       registrarNo(store, {
         nivel: 'info',
         evento: 'USER_PASSWORD_CHANGED',

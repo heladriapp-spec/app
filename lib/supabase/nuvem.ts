@@ -125,6 +125,22 @@ function cabecalhos(contentType?: string, extra?: Record<string, string>) {
   }
 }
 
+export async function chamarFuncao<T>(nome: string, args: Record<string, unknown>): Promise<T> {
+  if (!/^[a-z_][a-z0-9_]*$/.test(nome)) throw new Error('Função inválida ao chamar o Supabase.')
+  const resposta = await pedir(
+    'POST',
+    `/rest/v1/rpc/${nome}`,
+    args,
+    undefined,
+    'application/json',
+    undefined,
+    true,
+  )
+  const texto = await resposta.text()
+  if (!texto) return undefined as T
+  return JSON.parse(texto) as T
+}
+
 async function pedir(
   method: string,
   caminho: string,
@@ -132,6 +148,7 @@ async function pedir(
   prefer?: string,
   contentType = 'application/json',
   extra?: Record<string, string>,
+  devolverCorpo = false,
 ) {
   const binario = Buffer.isBuffer(body)
   const resposta = await fetch(endereco(caminho), {
@@ -148,7 +165,7 @@ async function pedir(
     throw new Error('O Supabase pediu um redirecionamento. A chave não foi enviada adiante.')
   }
   if (!resposta.ok) throw await falha(resposta)
-  if (method !== 'GET') await resposta.body?.cancel()
+  if (!devolverCorpo && method !== 'GET') await resposta.body?.cancel()
   return resposta
 }
 
@@ -173,6 +190,11 @@ function codigoDe(erro: unknown) {
 export function ehTabelaAusente(erro: unknown) {
   if (codigoDe(erro) === 'PGRST205') return true
   return erro instanceof Error && erro.message.includes('ainda não tem a tabela')
+}
+
+export function ehFuncaoAusente(erro: unknown) {
+  if (codigoDe(erro) === 'PGRST202') return true
+  return erro instanceof Error && erro.message.includes('ainda não tem a função')
 }
 
 async function falha(resposta: Response) {
@@ -206,6 +228,7 @@ function mensagemSupabase(status: number, codigo: string, coluna: string, detalh
       : 'O Supabase ainda não tem uma coluna desta versão.'
   }
   if (codigo === 'PGRST205') return 'O Supabase ainda não tem a tabela desta versão.'
+  if (codigo === 'PGRST202') return 'O Supabase ainda não tem a função desta versão.'
   if (codigo === '23514') return 'O Supabase recusou o status do projeto. Falta a atualização do banco.'
   const curto = detalhe.replace(/\s+/g, ' ').trim().slice(0, 160)
   if (curto && !/key|token|secret|bearer/i.test(curto)) return `Supabase respondeu ${status}: ${curto}`

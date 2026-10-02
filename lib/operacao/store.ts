@@ -67,7 +67,7 @@ const LIMITE_LOGS = 400
 
 let fila: Promise<unknown> = Promise.resolve()
 
-function semear(): Store {
+async function semear(): Promise<Store> {
   return {
     usuarios: [
       {
@@ -76,7 +76,7 @@ function semear(): Store {
         email: null,
         celular: null,
         login: 'adm',
-        senhaHash: hashSenha('Administrador@001'),
+        senhaHash: await hashSenha('Administrador@001'),
         papel: 'administrador',
         ativo: true,
         origem: 'instalacao',
@@ -88,7 +88,7 @@ function semear(): Store {
         email: null,
         celular: null,
         login: 'convidado',
-        senhaHash: hashSenha('convidado@1'),
+        senhaHash: await hashSenha('convidado@1'),
         papel: 'comum',
         ativo: true,
         origem: 'instalacao',
@@ -152,12 +152,15 @@ export function registrarNo(
   }
 }
 
-export async function alterarStore<T>(fn: (store: Store) => T): Promise<T> {
+export async function alterarStore<T>(fn: (store: Store) => T | Promise<T>): Promise<T> {
   const exec = fila.then(async () => {
-    const store = supabaseConfigurado()
-      ? await lerNuvem()
-      : completar((await lerDisco()) ?? semear())
-    const resultado = fn(store)
+    let store: Store
+    if (supabaseConfigurado()) store = await lerNuvem()
+    else {
+      const disco = await lerDisco()
+      store = disco ? completar(disco) : await semear()
+    }
+    const resultado = await fn(store)
     if (supabaseConfigurado()) await gravarNuvem(store)
     else await gravarDisco(store)
     return resultado
@@ -231,7 +234,7 @@ async function lerNuvem(): Promise<Store> {
     lerLinks(),
   ])
   if (usuarios.length === 0) {
-    const vazio = semear()
+    const vazio = await semear()
     await gravarNuvem(vazio)
     return vazio
   }

@@ -1,12 +1,15 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const ARQUIVO = path.join(process.cwd(), 'data', 'segredo-sessao')
 
 function segredo() {
-  const nuvem = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  if (nuvem) return createHash('sha256').update('heladri-sessao-v1').update(nuvem).digest()
+  const definido = process.env.SEGREDO_SESSAO?.trim() ?? ''
+  if (definido) {
+    if (definido.length < 32) throw new Error('SEGREDO_SESSAO precisa de ao menos 32 caracteres.')
+    return definido
+  }
   const pasta = path.dirname(ARQUIVO)
   if (!existsSync(pasta)) mkdirSync(pasta, { recursive: true })
   if (!existsSync(ARQUIVO)) {

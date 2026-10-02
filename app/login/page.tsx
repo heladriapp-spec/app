@@ -47,9 +47,6 @@ export default async function LoginPage({
           Esqueci a senha
         </Link>
       </p>
-      <p className="text-xs text-muted-foreground">
-        Contas da instalação: adm e convidado. As duas não têm e-mail.
-      </p>
     </AuthShell>
   )
 }

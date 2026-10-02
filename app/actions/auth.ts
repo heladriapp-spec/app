@@ -8,30 +8,44 @@ import {
   marcarRecadoDeEntrada,
   usuarioDaSessao,
 } from '@/lib/auth/guard'
+import { ipDoCabecalho, limparFalhasDeLogin, loginBloqueado, registrarFalhaDeLogin } from '@/lib/auth/limite'
 import { acharLink, emitirLink, linkRecente, motivoDoLink, tokenInformado } from '@/lib/auth/links'
-import { confereSenha, hashSenha } from '@/lib/auth/senha'
+import { confereSenha, consumirTempoDeSenha, hashSenha } from '@/lib/auth/senha'
 import { enviarRecuperacao } from '@/lib/email/mensagem'
 import { remetenteConfigurado } from '@/lib/email/smtp'
 import { alterarStore, registrarNo } from '@/lib/operacao/store'
+import { headers } from 'next/headers'
 import { redirect, unstable_rethrow } from 'next/navigation'
 
-function avisoLogin(motivo: 'inexistente' | 'senha' | 'inativo') {
-  if (motivo === 'inexistente') return 'Usuário inexistente.'
-  if (motivo === 'senha') return 'Senha incorreta.'
-  return 'Esta conta está desativada.'
-}
+const RECUSA = 'Usuário ou senha incorretos.'
+const ESPERA = 'Muitas tentativas. Espere alguns minutos e tente de novo.'
 
 export async function entrar(formData: FormData) {
   const login = String(formData.get('login') ?? '').trim().toLowerCase()
   const senha = String(formData.get('senha') ?? '')
+  const recebidos = await headers()
+  const ip = ipDoCabecalho(recebidos.get('x-forwarded-for'), recebidos.get('x-real-ip'))
 
-  let resultado:
-    | { ok: false; motivo: 'inexistente' | 'senha' | 'inativo' }
-    | { ok: true; id: string; ocultarBoasVindas: boolean }
+  let resultado: { ok: false } | { ok: true; id: string; ocultarBoasVindas: boolean }
   try {
-    resultado = await alterarStore((store) => {
+    if (await loginBloqueado(login, ip)) {
+      await alterarStore((store) => {
+        registrarNo(store, {
+          nivel: 'alerta',
+          evento: 'LOGIN_RATE_LIMITED',
+          ator: null,
+          mensagem: 'Tentativa de login recusada.',
+          detalhe: { login },
+        })
+      })
+      redirect(`/login?erro=${encodeURIComponent(ESPERA)}`)
+    }
+    resultado = await alterarStore(async (store) => {
       const usuario = store.usuarios.find((item) => item.login === login)
-      if (!usuario) {
+      let senhaConfere = false
+      if (usuario) senhaConfere = await confereSenha(senha, usuario.senhaHash)
+      else await consumirTempoDeSenha(senha)
+      if (!usuario || !senhaConfere) {
         registrarNo(store, {
           nivel: 'alerta',
           evento: 'USER_LOGIN_FAILED',
@@ -39,17 +53,7 @@ export async function entrar(formData: FormData) {
           mensagem: 'Tentativa de login recusada.',
           detalhe: { login },
         })
-        return { ok: false as const, motivo: 'inexistente' as const }
-      }
-      if (!confereSenha(senha, usuario.senhaHash)) {
-        registrarNo(store, {
-          nivel: 'alerta',
-          evento: 'USER_LOGIN_FAILED',
-          ator: null,
-          mensagem: 'Tentativa de login recusada.',
-          detalhe: { login },
-        })
-        return { ok: false as const, motivo: 'senha' as const }
+        return { ok: false as const }
       }
       if (!usuario.ativo) {
         registrarNo(store, {
@@ -59,7 +63,7 @@ export async function entrar(formData: FormData) {
           mensagem: 'Conta desativada tentou entrar.',
           detalhe: { login },
         })
-        return { ok: false as const, motivo: 'inativo' as const }
+        return { ok: false as const }
       }
       registrarNo(store, {
         nivel: 'info',
@@ -78,7 +82,23 @@ export async function entrar(formData: FormData) {
   }
 
   if (!resultado.ok) {
-    redirect(`/login?erro=${encodeURIComponent(avisoLogin(resultado.motivo))}`)
+    try {
+      await registrarFalhaDeLogin(login, ip)
+    } catch (error) {
+      unstable_rethrow(error)
+      redirect(
+        `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
+      )
+    }
+    redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
+  }
+  try {
+    await limparFalhasDeLogin(login)
+  } catch (error) {
+    unstable_rethrow(error)
+    redirect(
+      `/login?erro=${encodeURIComponent('Não foi possível entrar agora. Tente de novo.')}`,
+    )
   }
 
   await gravarSessao(resultado.id)
@@ -208,7 +228,7 @@ export async function confirmarAcesso(formData: FormData) {
 
   let usuarioId = ''
   try {
-    const erro = await alterarStore((store) => {
+    const erro = await alterarStore(async (store) => {
       const link = acharLink(store.links, token)
       const motivo = motivoDoLink(link, 'confirmacao')
       if (motivo || !link) return motivo ?? 'Este link não vale.'
@@ -223,7 +243,7 @@ export async function confirmarAcesso(formData: FormData) {
         email: link.email,
         celular: pedido.celular,
         login: login.login,
-        senhaHash: hashSenha(senha),
+        senhaHash: await hashSenha(senha),
         papel: 'comum',
         ativo: true,
         origem: 'pedido',
@@ -278,13 +298,13 @@ export async function definirSenhaNova(formData: FormData) {
   if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
 
   try {
-    const erro = await alterarStore((store) => {
+    const erro = await alterarStore(async (store) => {
       const link = acharLink(store.links, token)
       const motivo = motivoDoLink(link, 'senha')
       if (motivo || !link) return motivo ?? 'Este link não vale.'
       const usuario = store.usuarios.find((item) => item.id === link.usuarioId && item.email === link.email)
       if (!usuario || !usuario.ativo) return 'Esta conta não pode trocar a senha por este link.'
-      usuario.senhaHash = hashSenha(senha)
+      usuario.senhaHash = await hashSenha(senha)
       link.usadoEm = new Date().toISOString()
       registrarNo(store, {
         nivel: 'info',

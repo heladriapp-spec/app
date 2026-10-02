@@ -1,6 +1,7 @@
 export const EVENTO_LABEL: Record<string, string> = {
   USER_LOGIN: 'Entrou',
   USER_LOGIN_FAILED: 'Falha de login',
+  LOGIN_RATE_LIMITED: 'Muitas tentativas de login',
   USER_LOGOUT: 'Saiu',
   USER_SIGNUP_REQUESTED: 'Pediu acesso',
   USER_APPROVED: 'Pedido aprovado',
