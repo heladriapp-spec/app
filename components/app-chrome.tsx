@@ -68,7 +68,7 @@ export function AppChrome({
         <div className="border-b px-4 py-3 md:hidden">
           <AppNavLinks groups={groups} tom="claro" />
         </div>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 md:px-10 md:py-10">{children}</main>
+        <main className="w-full flex-1 px-4 py-5 md:px-6 md:py-6">{children}</main>
       </div>
     </div>
   )

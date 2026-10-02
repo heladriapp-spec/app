@@ -85,10 +85,14 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-6">
+    <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projeto.id} />
-      <NotaArquivoReferencial nome={projeto.arquivoNome} />
-      <div className="grid items-start gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <NotaArquivoReferencial
+        nome={projeto.arquivoNome}
+        projetoId={projeto.id}
+        gerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
+      />
+      <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Capítulos
@@ -128,7 +132,7 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
           return (
             <section
               key={item.id}
-              className={cn('min-w-0 flex-col gap-6', item.id === atual.id ? 'flex' : 'hidden')}
+              className={cn('min-w-0 flex-col gap-4', item.id === atual.id ? 'flex' : 'hidden')}
             >
               <div>
                 <p className="text-xs text-muted-foreground">

@@ -1,6 +1,5 @@
 import { carregarPlanilha } from '@/app/actions/projetos'
 import { FormPlanilha } from '@/components/form-planilha'
-import { ArquivoReferencial } from '@/components/arquivo-referencial'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { CotacaoTela } from '@/components/cotacao-tela'
 import { Recado } from '@/components/recado'
@@ -37,7 +36,7 @@ export default async function ProjetoPage({
   const lida = await planilhaDoProjeto(projeto).catch(() => null)
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-4">
         <p className="text-xs text-muted-foreground">
           <Link href="/" className="inline-flex items-center gap-1 hover:text-foreground">
@@ -80,20 +79,19 @@ export default async function ProjetoPage({
       {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <div className="flex flex-col gap-3">
-          <ArquivoReferencial projeto={projeto} />
           <p className="text-sm text-muted-foreground">
             {lida.cotacao.subtitulo || lida.cotacao.titulo}
           </p>
           <CotacaoTela
             projetoId={projeto.id}
             arquivoNome={projeto.arquivoNome}
+            arquivoGerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
             cotacao={lida.cotacao}
             iniciais={valoresDaCotacao(projeto, lida.cotacao)}
           />
         </div>
       ) : lida ? (
         <div className="flex flex-col gap-3">
-          <ArquivoReferencial projeto={projeto} />
           <p className="text-sm text-muted-foreground">
             {lida.capa.aba}
             {lida.capa.processo ? ` · ${lida.capa.processo}` : ''}

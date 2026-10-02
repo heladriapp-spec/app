@@ -69,11 +69,13 @@ const STATUS: Record<string, string> = {
 export function CotacaoTela({
   projetoId,
   arquivoNome,
+  arquivoGerado = false,
   cotacao,
   iniciais,
 }: {
   projetoId: string
   arquivoNome: string | null
+  arquivoGerado?: boolean
   cotacao: CotacaoLida
   iniciais: Valores
 }) {
@@ -132,11 +134,11 @@ export function CotacaoTela({
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-6">
+    <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
-      <NotaArquivoReferencial nome={arquivoNome} />
-      <div className="grid items-start gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
+      <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
           <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Capítulos
@@ -186,7 +188,7 @@ export function CotacaoTela({
           return (
             <section
               key={item.id}
-              className={cn('@container min-w-0 flex-col gap-6', item.id === atual.id ? 'flex' : 'hidden')}
+              className={cn('@container min-w-0 flex-col gap-4', item.id === atual.id ? 'flex' : 'hidden')}
             >
               <div>
                 <p className="text-xs text-muted-foreground">
@@ -501,7 +503,7 @@ function ListaItens({
 }) {
   const opcoes = opcoesStatus(legenda)
   return (
-    <div className="grid gap-6 @5xl:grid-cols-2">
+    <div className="grid gap-3 @3xl:grid-cols-2">
       {itens.map((item) => (
         <ItemCard
           key={item.codigo}
