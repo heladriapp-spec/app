@@ -152,6 +152,10 @@ async function pedir(
   return resposta
 }
 
+export function colunaQueFalta(erro: unknown) {
+  return colunaAusente(erro)
+}
+
 function colunaAusente(erro: unknown) {
   const codigo = codigoDe(erro)
   if (codigo !== 'PGRST204' && codigo !== '42703') return null

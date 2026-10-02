@@ -36,7 +36,7 @@ export function AppChrome({
             {usuario.nome}
           </p>
           <p className="text-[0.7rem] text-slate-400">{PAPEL[usuario.papel]}</p>
-          <form action={sair} className="mt-2">
+          <form action={sair} data-aviso="sair" className="mt-2">
             <Button
               type="submit"
               variant="ghost"
@@ -56,7 +56,7 @@ export function AppChrome({
             <p className="text-sm font-semibold">Heladri</p>
             <AppVersao className="text-muted-foreground" />
           </div>
-          <form action={sair}>
+          <form action={sair} data-aviso="sair">
             <Button type="submit" variant="ghost" size="sm">
               Sair
             </Button>

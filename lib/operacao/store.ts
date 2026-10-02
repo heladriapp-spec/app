@@ -1,7 +1,14 @@
 import type { LinkAcesso, TipoLink } from '@/lib/auth/links'
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { hashSenha } from '@/lib/auth/senha'
-import { apagarFora, ehTabelaAusente, gravarTabela, lerTabela, supabaseConfigurado } from '@/lib/supabase/nuvem'
+import {
+  apagarFora,
+  colunaQueFalta,
+  ehTabelaAusente,
+  gravarTabela,
+  lerTabela,
+  supabaseConfigurado,
+} from '@/lib/supabase/nuvem'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -17,6 +24,7 @@ export type Usuario = {
   papel: Papel
   ativo: boolean
   origem: 'instalacao' | 'pedido'
+  ocultarBoasVindas: boolean
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senhaHash'>
@@ -72,6 +80,7 @@ function semear(): Store {
         papel: 'administrador',
         ativo: true,
         origem: 'instalacao',
+        ocultarBoasVindas: false,
       },
       {
         id: 'instalacao-convidado',
@@ -83,6 +92,7 @@ function semear(): Store {
         papel: 'comum',
         ativo: true,
         origem: 'instalacao',
+        ocultarBoasVindas: false,
       },
     ],
     pedidos: [],
@@ -94,6 +104,9 @@ function semear(): Store {
 
 function completar(store: Store): Store {
   if (!Array.isArray(store.links)) store.links = []
+  for (const usuario of store.usuarios) {
+    if (typeof usuario.ocultarBoasVindas !== 'boolean') usuario.ocultarBoasVindas = false
+  }
   return store
 }
 
@@ -173,6 +186,7 @@ type UsuarioRow = {
   papel: Papel
   ativo: boolean
   origem: Usuario['origem']
+  ocultar_boas_vindas?: boolean | null
 }
 
 type PedidoRow = {
@@ -232,6 +246,7 @@ async function lerNuvem(): Promise<Store> {
       papel: item.papel,
       ativo: item.ativo,
       origem: item.origem,
+      ocultarBoasVindas: item.ocultar_boas_vindas === true,
     })),
     pedidos: pedidos.map((item) => ({
       id: item.id,
@@ -263,20 +278,7 @@ async function gravarNuvem(store: Store) {
     throw new Error('A gravação foi recusada: ficaria sem administrador ativo.')
   }
   await gravarLinks(store.links)
-  await gravarTabela(
-    'usuarios',
-    store.usuarios.map((item) => ({
-      id: item.id,
-      nome: item.nome,
-      email: item.email,
-      celular: item.celular,
-      login: item.login,
-      senha_hash: item.senhaHash,
-      papel: item.papel,
-      ativo: item.ativo,
-      origem: item.origem,
-    })),
-  )
+  await gravarUsuarios(store.usuarios)
   await apagarFora(
     'usuarios',
     'id',
@@ -323,6 +325,31 @@ async function gravarNuvem(store: Store) {
     'id',
     store.logs.map((item) => item.id),
   )
+}
+
+async function gravarUsuarios(usuarios: Usuario[]) {
+  const linhas = usuarios.map((item) => ({
+    id: item.id,
+    nome: item.nome,
+    email: item.email,
+    celular: item.celular,
+    login: item.login,
+    senha_hash: item.senhaHash,
+    papel: item.papel,
+    ativo: item.ativo,
+    origem: item.origem,
+    ocultar_boas_vindas: item.ocultarBoasVindas,
+  }))
+  try {
+    await gravarTabela('usuarios', linhas)
+  } catch (erro) {
+    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
+    if (usuarios.some((item) => item.ocultarBoasVindas)) throw erro
+    await gravarTabela(
+      'usuarios',
+      linhas.map(({ ocultar_boas_vindas: _ocultar, ...resto }) => resto),
+    )
+  }
 }
 
 async function lerLinks() {

@@ -1,4 +1,4 @@
-import { COOKIE_SESSAO, emitirSessao, lerSessao } from '@/lib/auth/sessao'
+import { COOKIE_RECADO, COOKIE_SESSAO, emitirSessao, lerSessao } from '@/lib/auth/sessao'
 import { lerStore, publico, type UsuarioPublico } from '@/lib/operacao/store'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -39,4 +39,24 @@ export async function gravarSessao(userId: string) {
 export async function limparSessao() {
   const jar = await cookies()
   jar.delete(COOKIE_SESSAO)
+  jar.delete(COOKIE_RECADO)
+}
+
+function opcoesRecado() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+  }
+}
+
+export async function marcarRecadoDeEntrada() {
+  const jar = await cookies()
+  jar.set(COOKIE_RECADO, '1', opcoesRecado())
+}
+
+export async function limparRecadoDeEntrada() {
+  const jar = await cookies()
+  jar.delete(COOKIE_RECADO)
 }

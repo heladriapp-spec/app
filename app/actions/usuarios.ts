@@ -231,6 +231,7 @@ export async function criarUsuario(formData: FormData) {
       papel,
       ativo: true,
       origem: 'pedido',
+      ocultarBoasVindas: false,
     })
     registrarNo(store, {
       nivel: 'info',

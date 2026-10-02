@@ -1,7 +1,13 @@
 'use server'
 
 import { validarLogin, validarSenha } from '@/lib/auth/credencial'
-import { gravarSessao, limparSessao, usuarioDaSessao } from '@/lib/auth/guard'
+import {
+  gravarSessao,
+  limparRecadoDeEntrada,
+  limparSessao,
+  marcarRecadoDeEntrada,
+  usuarioDaSessao,
+} from '@/lib/auth/guard'
 import { acharLink, emitirLink, linkRecente, motivoDoLink, tokenInformado } from '@/lib/auth/links'
 import { confereSenha, hashSenha } from '@/lib/auth/senha'
 import { enviarRecuperacao } from '@/lib/email/mensagem'
@@ -19,7 +25,9 @@ export async function entrar(formData: FormData) {
   const login = String(formData.get('login') ?? '').trim().toLowerCase()
   const senha = String(formData.get('senha') ?? '')
 
-  let resultado: { ok: false; motivo: 'inexistente' | 'senha' | 'inativo' } | { ok: true; id: string }
+  let resultado:
+    | { ok: false; motivo: 'inexistente' | 'senha' | 'inativo' }
+    | { ok: true; id: string; ocultarBoasVindas: boolean }
   try {
     resultado = await alterarStore((store) => {
       const usuario = store.usuarios.find((item) => item.login === login)
@@ -60,7 +68,7 @@ export async function entrar(formData: FormData) {
         mensagem: `${usuario.login} entrou.`,
         detalhe: { papel: usuario.papel },
       })
-      return { ok: true as const, id: usuario.id }
+      return { ok: true as const, id: usuario.id, ocultarBoasVindas: usuario.ocultarBoasVindas }
     })
   } catch (error) {
     unstable_rethrow(error)
@@ -74,6 +82,8 @@ export async function entrar(formData: FormData) {
   }
 
   await gravarSessao(resultado.id)
+  if (resultado.ocultarBoasVindas) await limparRecadoDeEntrada()
+  else await marcarRecadoDeEntrada()
   redirect('/')
 }
 
@@ -217,6 +227,7 @@ export async function confirmarAcesso(formData: FormData) {
         papel: 'comum',
         ativo: true,
         origem: 'pedido',
+        ocultarBoasVindas: false,
       })
       link.usadoEm = new Date().toISOString()
       registrarNo(store, {
@@ -242,7 +253,20 @@ export async function confirmarAcesso(formData: FormData) {
   }
 
   await gravarSessao(usuarioId)
+  await marcarRecadoDeEntrada()
   redirect('/')
+}
+
+export async function dispensarBoasVindas(formData: FormData) {
+  const usuario = await usuarioDaSessao()
+  const ocultar = formData.get('ocultar') === '1'
+  if (usuario && ocultar) {
+    await alterarStore((store) => {
+      const atual = store.usuarios.find((item) => item.id === usuario.id)
+      if (atual) atual.ocultarBoasVindas = true
+    })
+  }
+  await limparRecadoDeEntrada()
 }
 
 export async function definirSenhaNova(formData: FormData) {

@@ -1,10 +1,13 @@
+import { BoasVindas } from '@/components/boas-vindas'
 import { RemoverProjeto } from '@/components/remover-projeto'
 import { buttonVariants } from '@/components/ui/button'
+import { COOKIE_RECADO } from '@/lib/auth/sessao'
 import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { listarProjetos } from '@/lib/projetos/store'
 import { STATUS_PROJETO, type Projeto } from '@/lib/projetos/tipos'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 
 export default async function InicioPage({
@@ -13,6 +16,7 @@ export default async function InicioPage({
   searchParams: Promise<{ confirmar?: string; erro?: string; ok?: string }>
 }) {
   const usuario = await requireUser()
+  const recado = (await cookies()).get(COOKIE_RECADO)?.value === '1' && !usuario.ocultarBoasVindas
   const avisos = await searchParams
   const todos = await listarProjetos()
   const projetos =
@@ -22,6 +26,7 @@ export default async function InicioPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {recado ? <BoasVindas nome={usuario.nome} /> : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Projetos</h1>

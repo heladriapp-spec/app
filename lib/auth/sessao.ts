@@ -40,3 +40,4 @@ export function lerSessao(token: string | undefined) {
 }
 
 export const COOKIE_SESSAO = 'heladri_sessao'
+export const COOKIE_RECADO = 'heladri_recado'
