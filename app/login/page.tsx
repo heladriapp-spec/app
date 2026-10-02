@@ -40,10 +40,10 @@ export default async function LoginPage({
         </Button>
       </form>
       <p className="flex gap-4 text-sm">
-        <Link href="/pedir-acesso" className="text-muted-foreground hover:text-foreground">
+        <Link href="/pedir-acesso" className="text-muted-foreground hover:text-primary">
           Pedir acesso
         </Link>
-        <Link href="/esqueci-senha" className="text-muted-foreground hover:text-foreground">
+        <Link href="/esqueci-senha" className="text-muted-foreground hover:text-primary">
           Esqueci a senha
         </Link>
       </p>

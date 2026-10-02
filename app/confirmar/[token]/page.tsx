@@ -51,7 +51,7 @@ export default async function ConfirmarPage({
           </form>
         </>
       )}
-      <Link href="/login" className="text-sm underline">
+      <Link href="/login" className="text-sm text-primary underline-offset-4 hover:underline">
         Voltar ao login
       </Link>
     </AuthShell>

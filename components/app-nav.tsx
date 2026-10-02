@@ -54,7 +54,7 @@ export function AppNavLinks({
           <p
             className={cn(
               'px-2.5 text-[0.65rem] font-semibold tracking-[0.16em] uppercase',
-              tom === 'escuro' ? 'text-slate-500' : 'text-muted-foreground',
+              tom === 'escuro' ? 'text-white/40' : 'text-muted-foreground',
             )}
           >
             {group.label}
@@ -72,8 +72,8 @@ export function AppNavLinks({
                     'inline-flex h-10 items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium',
                     tom === 'escuro'
                       ? ligado
-                        ? 'bg-white/10 text-white'
-                        : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-white/70 hover:bg-white/10 hover:text-white'
                       : ligado
                         ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',

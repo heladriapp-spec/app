@@ -31,7 +31,7 @@ export default async function EsqueciSenhaPage({
         </div>
         <Button type="submit">Pedir link</Button>
       </form>
-      <Link href="/login" className="text-sm underline">
+      <Link href="/login" className="text-sm text-primary underline-offset-4 hover:underline">
         Voltar ao login
       </Link>
     </AuthShell>

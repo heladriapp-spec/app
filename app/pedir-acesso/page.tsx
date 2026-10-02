@@ -39,7 +39,7 @@ export default async function PedirAcessoPage({
         </div>
         <Button type="submit">Enviar pedido</Button>
       </form>
-      <Link href="/login" className="text-sm underline">
+      <Link href="/login" className="text-sm text-primary underline-offset-4 hover:underline">
         Voltar ao login
       </Link>
     </AuthShell>

@@ -21,7 +21,7 @@ export function BoasVindas({ nome }: { nome: string }) {
   if (!aberto) return null
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-slate-700/35 px-4 pt-[12vh] backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/45 px-4 pt-[12vh] backdrop-blur-[2px]">
       <form
         ref={formRef}
         action={dispensarBoasVindas}

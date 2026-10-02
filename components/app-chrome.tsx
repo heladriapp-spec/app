@@ -19,22 +19,27 @@ export function AppChrome({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-dvh bg-muted/70">
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-sidebar md:flex">
-        <div className="border-b px-4 py-5">
+    <div className="flex min-h-dvh bg-background">
+      <aside className="campo-heladri filete-heladri sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-white/10 text-sidebar-foreground md:flex">
+        <div className="border-b border-white/10 px-4 py-5">
           <Marca />
-          <AppVersao className="mt-3 text-muted-foreground" />
+          <AppVersao className="mt-3 text-white/45" />
         </div>
-        <div className="flex-1 overflow-y-auto px-3">
-          <AppNavLinks groups={groups} tom="claro" />
+        <div className="flex-1 overflow-y-auto px-3 py-4">
+          <AppNavLinks groups={groups} tom="escuro" />
         </div>
-        <div className="border-t px-4 py-3">
+        <div className="border-t border-white/10 px-4 py-3">
           <p className="truncate text-sm" title={usuario.login}>
             {usuario.nome}
           </p>
-          <p className="text-xs text-muted-foreground">{PAPEL[usuario.papel]}</p>
+          <p className="text-xs text-white/50">{PAPEL[usuario.papel]}</p>
           <form action={sair} data-aviso="sair" className="mt-2">
-            <Button type="submit" variant="ghost" size="sm">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="sm"
+              className="text-white/80 hover:bg-white/10 hover:text-white"
+            >
               <LogOut data-icon="inline-start" />
               Sair
             </Button>
@@ -43,13 +48,18 @@ export function AppChrome({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-sidebar px-4 py-3 md:hidden">
+        <header className="campo-heladri filete-heladri flex items-center justify-between px-4 py-3 text-white md:hidden">
           <div>
             <Marca compacta />
-            <AppVersao className="mt-1 text-muted-foreground" />
+            <AppVersao className="mt-1.5 text-white/45" />
           </div>
           <form action={sair} data-aviso="sair">
-            <Button type="submit" variant="ghost" size="sm">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="sm"
+              className="text-white/80 hover:bg-white/10 hover:text-white"
+            >
               <LogOut data-icon="inline-start" />
               Sair
             </Button>

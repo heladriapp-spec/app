@@ -127,7 +127,7 @@ export function AvisoAcao() {
       role="status"
       aria-live="polite"
       aria-busy={girando}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-700/40 px-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-[2px]"
     >
       <div className="aviso-painel flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border bg-card px-10 py-10 text-center shadow-2xl">
         <span

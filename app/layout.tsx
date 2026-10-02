@@ -4,13 +4,13 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Heladri',
-  description: 'Portal para preencher a planilha de licitação do SESC.',
+  title: 'Heladri Cenografia',
+  description: 'Portal da Heladri Cenografia para preencher a planilha de licitação do SESC.',
 }
 
 export const viewport: Viewport = {
   colorScheme: 'light',
-  themeColor: '#eef6f7',
+  themeColor: '#f6f4f1',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
