@@ -173,12 +173,25 @@ export function colunaQueFalta(erro: unknown) {
   return colunaAusente(erro)
 }
 
+function nomeDaColuna(detalhe: string) {
+  return (
+    /Could not find the '([\w]+)' column/.exec(detalhe)?.[1] ??
+    /column "([\w]+)"/.exec(detalhe)?.[1] ??
+    /column (?:[\w]+\.)?([\w]+) does not exist/.exec(detalhe)?.[1] ??
+    ''
+  )
+}
+
 function colunaAusente(erro: unknown) {
-  const codigo = codigoDe(erro)
-  if (codigo !== 'PGRST204' && codigo !== '42703') return null
   if (!erro || typeof erro !== 'object' || !('coluna' in erro)) return null
   const coluna = (erro as { coluna?: unknown }).coluna
-  return typeof coluna === 'string' && /^[\w]+$/.test(coluna) ? coluna : null
+  if (typeof coluna !== 'string' || !/^[\w]+$/.test(coluna)) return null
+  const codigo = codigoDe(erro)
+  if (codigo === 'PGRST204' || codigo === '42703') return coluna
+  if (erro instanceof Error && /does not exist|schema cache|não tem a coluna/i.test(erro.message)) {
+    return coluna
+  }
+  return null
 }
 
 function codigoDe(erro: unknown) {
@@ -208,10 +221,7 @@ async function falha(resposta: Response) {
   } catch {
     detalhe = texto.replace(/\s+/g, ' ').trim().slice(0, 180)
   }
-  const coluna =
-    /Could not find the '([\w]+)' column/.exec(detalhe)?.[1] ??
-    /column "([\w]+)"/.exec(detalhe)?.[1] ??
-    ''
+  const coluna = nomeDaColuna(detalhe)
   const erro = new Error(mensagemSupabase(resposta.status, codigo, coluna, detalhe)) as Error & {
     codigo?: string
     coluna?: string
