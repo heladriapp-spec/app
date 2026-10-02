@@ -47,6 +47,7 @@ export default async function ProjetoPage({
             {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]} · última alteração{' '}
             {dataHoraBR(projeto.atualizadoEm)} por {projeto.atualizadoPor}
           </p>
+          <div id="conclusao-projeto" className="mt-3" />
         </div>
         {usuario.papel === 'administrador' && avisos.confirmar !== 'remover' ? (
           <RemoverProjeto

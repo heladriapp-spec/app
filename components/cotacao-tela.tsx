@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type ValorItem = {
   valor: string
@@ -118,6 +119,7 @@ export function CotacaoTela({
   return (
     <form action={salvarPreenchimento} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
+      <ConclusaoProjeto cotacao={cotacao} valores={valores} />
       <NotaArquivoReferencial nome={arquivoNome} />
       <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <nav className="flex flex-col gap-1 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
@@ -182,6 +184,7 @@ export function CotacaoTela({
                     </p>
                     <BarraConclusao
                       nome={item.nome}
+                      className="mt-3"
                       statuses={itens.map((linha) => valores[linha.codigo]?.status || linha.status)}
                     />
                   </>
@@ -318,13 +321,45 @@ function DicaCapitulo({
   )
 }
 
-function BarraConclusao({ nome, statuses }: { nome: string; statuses: string[] }) {
+function statusesDoProjeto(cotacao: CotacaoLida, valores: Valores) {
+  return [...cotacao.materiais, ...cotacao.maoDeObra].map(
+    (item) => valores[item.codigo]?.status || item.status,
+  )
+}
+
+function ConclusaoProjeto({ cotacao, valores }: { cotacao: CotacaoLida; valores: Valores }) {
+  const [alvo, setAlvo] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setAlvo(document.getElementById('conclusao-projeto'))
+  }, [])
+  if (!alvo) return null
+  return createPortal(
+    <BarraConclusao
+      nome="o projeto"
+      rotulo="Projeto"
+      statuses={statusesDoProjeto(cotacao, valores)}
+    />,
+    alvo,
+  )
+}
+
+function BarraConclusao({
+  nome,
+  statuses,
+  rotulo = 'Conclusão',
+  className,
+}: {
+  nome: string
+  statuses: string[]
+  rotulo?: string
+  className?: string
+}) {
   const adesao = adesaoDe(statuses)
   if (!adesao) return null
   return (
-    <div className="mt-3 max-w-sm">
+    <div className={cn('max-w-sm', className)}>
       <div className="flex items-baseline justify-between gap-3 text-xs">
-        <span className="text-muted-foreground">Conclusão</span>
+        <span className="text-muted-foreground">{rotulo}</span>
         <span className="font-medium tabular-nums">{adesao.percentual}%</span>
       </div>
       <div
