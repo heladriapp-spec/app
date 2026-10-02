@@ -12,7 +12,7 @@ import { formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
 import { lancamentoDaLinha } from '@/lib/projetos/lancamento'
 import type { Lancamento, Projeto } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { Check, ChevronLeft, ChevronRight, Circle } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -92,40 +92,36 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
         projetoId={projeto.id}
         gerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
       />
-      <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
-          <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Capítulos
-          </p>
-          <p className="px-2.5 pb-2 text-[0.7rem] leading-snug text-muted-foreground">
-            Verde, capítulo preenchido. Laranja, ainda falta valor.
-          </p>
+      <nav aria-label="Capítulos" className="flex flex-col gap-2">
+        <p className="text-xs text-muted-foreground">Verde, preenchido. Laranja, ainda falta valor.</p>
+        <div className="flex gap-2.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
           {capitulos.map((item, indice) => {
             const preenchido = capituloPreenchido(item, valores)
+            const ativo = item.id === atual.id
             return (
               <button
                 key={item.id}
                 type="button"
+                title={item.nome}
                 onClick={() => setAberto(item.id)}
-                className={classeCapitulo(preenchido, item.id === atual.id)}
-                aria-current={item.id === atual.id ? 'page' : undefined}
-              >
-                <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
-                {preenchido ? (
-                  <Check className="size-3.5 shrink-0" aria-hidden />
-                ) : (
-                  <Circle className="size-3.5 shrink-0" aria-hidden />
+                aria-current={ativo ? 'page' : undefined}
+                className={cn(
+                  'inline-flex max-w-60 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                  preenchido
+                    ? 'border-emerald-500/70 bg-emerald-50 text-emerald-950'
+                    : 'border-amber-500/80 bg-amber-50 text-amber-950',
+                  ativo && 'ring-2 ring-primary',
                 )}
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{item.nome}</span>
-                  <span className="block truncate text-[0.7rem] opacity-70">
-                    {dica(item, valores)}
-                  </span>
-                </span>
+              >
+                <span className="text-xs tabular-nums opacity-60">{indice + 1}</span>
+                {preenchido ? <Check className="size-3.5 shrink-0" aria-hidden /> : null}
+                <span className="truncate">{item.nome}</span>
               </button>
             )
           })}
-        </nav>
+        </div>
+      </nav>
+      <div className="flex flex-col gap-4">
         {capitulos.map((item, indice) => {
           const anterior = indice > 0 ? capitulos[indice - 1] : null
           const proximo = indice < capitulos.length - 1 ? capitulos[indice + 1] : null
@@ -315,23 +311,6 @@ function capituloPreenchido(capitulo: Capitulo, valores: Record<string, Lancamen
     const campos = valores[String(linha.linha)]
     return Boolean(campos?.material.trim() && campos.maoDeObra.trim())
   })
-}
-
-function dica(capitulo: Capitulo, valores: Record<string, Lancamento>) {
-  const faltam = capitulo.itens.filter((linha) => {
-    const campos = valores[String(linha.linha)]
-    return !campos?.material.trim() || !campos.maoDeObra.trim()
-  }).length
-  if (faltam === 0) return `${capitulo.itens.length} itens · preenchido`
-  return `${faltam} sem valor`
-}
-
-function classeCapitulo(preenchido: boolean, ativo: boolean) {
-  return cn(
-    'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
-    preenchido ? 'border-emerald-400 bg-emerald-50 text-emerald-950' : 'border-amber-400 bg-amber-50 text-amber-950',
-    ativo && 'ring-2 ring-primary/40',
-  )
 }
 
 function valoresIniciais(projeto: Projeto, linhas: LinhaPlanilha[]) {

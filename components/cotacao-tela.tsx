@@ -16,7 +16,7 @@ import {
   valorFinalServico,
 } from '@/lib/planilha/extra'
 import { formatarMoedaBR, formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
-import { adesaoDe, opcoesStatus, type OpcaoStatus } from '@/lib/planilha/status'
+import { adesaoDe, chaveStatus, opcoesStatus, type OpcaoStatus } from '@/lib/planilha/status'
 import type { ExtraServico } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
 import {
@@ -26,7 +26,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Circle,
   HardHat,
   Package,
   PenLine,
@@ -138,42 +137,14 @@ export function CotacaoTela({
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
       <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
-      <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <nav className="flex flex-col gap-1.5 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:pr-1">
-          <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Capítulos
-          </p>
-          <p className="px-2.5 pb-2 text-[0.7rem] leading-snug text-muted-foreground">
-            Verde, capítulo preenchido. Laranja, ainda falta valor. O percentual é a parte aderente.
-          </p>
-          {capitulos.map((item, indice) => {
-            const estado = capituloPreenchido(item, cotacao, valores)
-            const anterior = indice > 0 ? capitulos[indice - 1] : null
-            const quebra = anterior == null || anterior.kicker !== item.kicker
-            return (
-              <div key={item.id} className="contents">
-                {quebra ? <RotuloCapitulo nome={item.kicker} /> : null}
-                <button
-                  type="button"
-                  onClick={() => setAberto(item.id)}
-                  className={classeCapitulo(estado, item.id === atual.id)}
-                  aria-current={item.id === atual.id ? 'page' : undefined}
-                >
-                  <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
-                  {estado === true ? (
-                    <Check className="size-3.5 shrink-0" aria-hidden />
-                  ) : estado === false ? (
-                    <Circle className="size-3.5 shrink-0" aria-hidden />
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{item.nome}</span>
-                    <DicaCapitulo capitulo={item} cotacao={cotacao} valores={valores} />
-                  </span>
-                </button>
-              </div>
-            )
-          })}
-        </nav>
+      <FaixaCapitulos
+        capitulos={capitulos}
+        atualId={atual.id}
+        cotacao={cotacao}
+        valores={valores}
+        onAbrir={setAberto}
+      />
+      <div className="flex flex-col gap-4">
         {capitulos.map((item) => {
           const indice = capitulos.findIndex((capitulo) => capitulo.id === item.id)
           const anterior = indice > 0 ? capitulos[indice - 1] : null
@@ -272,24 +243,99 @@ const ICONE_KICKER: Record<string, LucideIcon> = {
   Cronograma: CalendarDays,
 }
 
-function RotuloCapitulo({ nome }: { nome: string }) {
-  const Icone = ICONE_KICKER[nome] ?? BookOpen
+type TomCapitulo = 'verde' | 'laranja' | 'vermelho' | 'neutro'
+
+function FaixaCapitulos({
+  capitulos,
+  atualId,
+  cotacao,
+  valores,
+  onAbrir,
+}: {
+  capitulos: Capitulo[]
+  atualId: string
+  cotacao: CotacaoLida
+  valores: Valores
+  onAbrir: (id: string) => void
+}) {
+  const grupos: { nome: string; itens: { item: Capitulo; indice: number }[] }[] = []
+  capitulos.forEach((item, indice) => {
+    const ultimo = grupos[grupos.length - 1]
+    if (!ultimo || ultimo.nome !== item.kicker) grupos.push({ nome: item.kicker, itens: [] })
+    grupos[grupos.length - 1].itens.push({ item, indice })
+  })
+
   return (
-    <p className="mt-4 flex items-center gap-2 px-2.5 pt-1 pb-1 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase first:mt-0">
-      <Icone className="size-3.5 text-primary" aria-hidden />
-      {nome}
-    </p>
+    <nav aria-label="Capítulos" className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        Verde, preenchido. Laranja, ainda falta valor. Vermelho, há divergência.
+      </p>
+      {grupos.map((grupo) => {
+        const Icone = ICONE_KICKER[grupo.nome] ?? BookOpen
+        return (
+          <div key={grupo.nome} className="flex items-start gap-3">
+            <p className="flex shrink-0 items-center gap-1.5 pt-2 text-[0.65rem] font-semibold tracking-[0.14em] whitespace-nowrap text-muted-foreground uppercase">
+              <Icone className="size-3.5 text-primary" aria-hidden />
+              {grupo.nome}
+            </p>
+            <div className="flex min-w-0 flex-1 gap-2.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+              {grupo.itens.map(({ item, indice }) => {
+                const tom = tomDoCapitulo(item, cotacao, valores)
+                const ativo = item.id === atualId
+                const adesao = adesaoDoCapitulo(item, cotacao, valores)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title={item.nome}
+                    onClick={() => onAbrir(item.id)}
+                    className={classeChip(tom, ativo)}
+                    aria-current={ativo ? 'page' : undefined}
+                  >
+                    <span className="text-xs tabular-nums opacity-60">{indice + 1}</span>
+                    {tom === 'verde' ? <Check className="size-3.5 shrink-0" aria-hidden /> : null}
+                    <span className="truncate">{item.nome}</span>
+                    {adesao ? (
+                      <span className="text-[0.7rem] tabular-nums opacity-70">{adesao.percentual}%</span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </nav>
   )
 }
 
-function classeCapitulo(preenchido: boolean | null, ativo: boolean) {
+function classeChip(tom: TomCapitulo, ativo: boolean) {
   return cn(
-    'flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors',
-    preenchido === true && 'border-emerald-400 bg-emerald-50 text-emerald-950',
-    preenchido === false && 'border-amber-400 bg-amber-50 text-amber-950',
-    preenchido === null && 'border-border bg-background',
-    ativo && 'ring-2 ring-primary/40',
+    'inline-flex max-w-60 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-sm transition-colors',
+    tom === 'verde' && 'border-emerald-500/70 bg-emerald-50 text-emerald-950',
+    tom === 'laranja' && 'border-amber-500/80 bg-amber-50 text-amber-950',
+    tom === 'vermelho' && 'border-red-500/70 bg-red-50 text-red-950',
+    tom === 'neutro' && 'border-border bg-card text-foreground',
+    ativo && 'ring-2 ring-primary',
   )
+}
+
+function tomDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores): TomCapitulo {
+  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return 'neutro'
+  const itens = itensDoCapitulo(capitulo, cotacao)
+  if (itens.length === 0) return 'neutro'
+  const divergente = itens.some(
+    (item) => chaveStatus(valores[item.codigo]?.status || item.status) === 'DIVERGENTE',
+  )
+  if (divergente) return 'vermelho'
+  const falta = itens.some((item) => !(valores[item.codigo]?.valor ?? '').trim())
+  return falta ? 'laranja' : 'verde'
+}
+
+function adesaoDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
+  const itens = itensDoCapitulo(capitulo, cotacao)
+  if (itens.length === 0) return null
+  return adesaoDe(itens.map((item) => valores[item.codigo]?.status || item.status))
 }
 
 function montarCapitulos(cotacao: CotacaoLida): Capitulo[] {
@@ -310,59 +356,10 @@ function montarCapitulos(cotacao: CotacaoLida): Capitulo[] {
   return lista
 }
 
-function capituloPreenchido(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
-  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return null
-  const fonte = capitulo.origem === 'materiais' ? cotacao.materiais : cotacao.maoDeObra
-  const itens = fonte.filter((item) => item.grupo === capitulo.grupo)
-  if (itens.length === 0) return null
-  return itens.every((item) => (valores[item.codigo]?.valor ?? '').trim().length > 0)
-}
-
 function itensDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida) {
   if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return []
   const fonte = capitulo.origem === 'materiais' ? cotacao.materiais : cotacao.maoDeObra
   return fonte.filter((item) => item.grupo === capitulo.grupo)
-}
-
-function DicaCapitulo({
-  capitulo,
-  cotacao,
-  valores,
-}: {
-  capitulo: Capitulo
-  cotacao: CotacaoLida
-  valores: Valores
-}) {
-  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') {
-    const dica =
-      capitulo.id === 'instrucoes'
-        ? 'Como preencher'
-        : capitulo.id === 'resumo'
-          ? 'Totais do trabalho'
-          : capitulo.id === 'cronograma'
-            ? 'Fases e datas'
-            : capitulo.kicker
-    return <span className="block truncate text-[0.7rem] opacity-70">{dica}</span>
-  }
-  const itens = itensDoCapitulo(capitulo, cotacao)
-  const adesao = adesaoDe(itens.map((item) => valores[item.codigo]?.status || item.status))
-  return (
-    <span className="mt-0.5 flex items-center gap-2 text-[0.7rem] opacity-80">
-      <span className="truncate">
-        {itens.length} {itens.length === 1 ? 'item' : 'itens'}
-      </span>
-      {adesao ? (
-        <>
-          <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-current/25" aria-hidden>
-            <span className="block h-full bg-current" style={{ width: `${adesao.percentual}%` }} />
-          </span>
-          <span className="shrink-0 tabular-nums" title="Parte aderente: sem pendente e sem divergente">
-            {adesao.percentual}%
-          </span>
-        </>
-      ) : null}
-    </span>
-  )
 }
 
 function statusesDoProjeto(cotacao: CotacaoLida, valores: Valores) {
@@ -503,7 +500,7 @@ function ListaItens({
 }) {
   const opcoes = opcoesStatus(legenda)
   return (
-    <div className="grid gap-3 @3xl:grid-cols-2">
+    <div className="grid gap-3 @3xl:grid-cols-2 @6xl:grid-cols-3">
       {itens.map((item) => (
         <ItemCard
           key={item.codigo}
