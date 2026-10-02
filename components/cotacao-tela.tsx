@@ -28,6 +28,7 @@ import {
   ChevronRight,
   CircleDashed,
   HardHat,
+  Loader2,
   Package,
   PenLine,
   Plus,
@@ -36,7 +37,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 type ValorItem = {
@@ -73,24 +74,31 @@ export function CotacaoTela({
   arquivoGerado = false,
   cotacao,
   iniciais,
+  salvo = false,
 }: {
   projetoId: string
   arquivoNome: string | null
   arquivoGerado?: boolean
   cotacao: CotacaoLida
   iniciais: Valores
+  salvo?: boolean
 }) {
   const capitulos = montarCapitulos(cotacao)
   const [valores, setValores] = useState(iniciais)
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
   const [aviso, setAviso] = useState('')
-  const [baixando, setBaixando] = useState(false)
-  const [concluindo, setConcluindo] = useState(false)
+  const [indo, setIndo] = useState<string | null>(null)
+  const [pendente, iniciar] = useTransition()
   const router = useRouter()
   const totais = totaisDe(cotacao, valores)
   const ordem = capitulos.findIndex((item) => item.id === aberto)
   const atual = capitulos[ordem] ?? capitulos[0]
   if (!atual) return null
+
+  function ir(id: string) {
+    setIndo(id)
+    iniciar(() => setAberto(id))
+  }
 
   function alterar(codigo: string, campo: Partial<ValorItem>) {
     setValores((prev) => ({
@@ -107,35 +115,35 @@ export function CotacaoTela({
   }
 
   async function aoBaixar(form: HTMLFormElement) {
-    setBaixando(true)
     setAviso('')
     try {
       const erro = await baixarPlanilha(form)
       if (erro) setAviso(erro)
       else router.refresh()
+      return erro
     } catch {
-      setAviso('Não foi possível baixar a planilha.')
-    } finally {
-      setBaixando(false)
+      const texto = 'Não foi possível baixar a planilha.'
+      setAviso(texto)
+      return texto
     }
   }
 
   async function aoConcluir(form: HTMLFormElement) {
-    setConcluindo(true)
     setAviso('')
     try {
       const erro = await baixarPlanilha(form, { concluir: true })
       if (erro) setAviso(erro)
       else router.refresh()
+      return erro
     } catch {
-      setAviso('Não foi possível concluir o projeto.')
-    } finally {
-      setConcluindo(false)
+      const texto = 'Não foi possível concluir o projeto.'
+      setAviso(texto)
+      return texto
     }
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-4">
+    <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
       <FaixaCapitulos
@@ -143,7 +151,8 @@ export function CotacaoTela({
         atualId={atual.id}
         cotacao={cotacao}
         valores={valores}
-        onAbrir={setAberto}
+        onAbrir={ir}
+        carregando={pendente ? indo : null}
         arquivo={
           <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
         }
@@ -206,9 +215,13 @@ export function CotacaoTela({
               {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
               <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-4 md:shadow-sm">
                 {anterior ? (
-                  <Button type="button" variant="outline" onClick={() => setAberto(anterior.id)}>
-                    <ChevronLeft data-icon="inline-start" />
-                    {anterior.nome}
+                  <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
+                    {pendente && indo === anterior.id ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : (
+                      <ChevronLeft data-icon="inline-start" />
+                    )}
+                    {pendente && indo === anterior.id ? 'Carregando' : anterior.nome}
                   </Button>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -216,17 +229,15 @@ export function CotacaoTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento
-                    ocupado={baixando || concluindo}
-                    baixando={baixando}
-                    concluindo={concluindo}
-                    onBaixar={(form) => void aoBaixar(form)}
-                    onConcluir={(form) => void aoConcluir(form)}
-                  />
+                  <AcoesPreenchimento salvo={salvo} onBaixar={aoBaixar} onConcluir={aoConcluir} />
                   {proximo ? (
-                    <Button type="button" onClick={() => setAberto(proximo.id)}>
-                      {proximo.nome}
-                      <ChevronRight data-icon="inline-end" />
+                    <Button type="button" onClick={() => ir(proximo.id)}>
+                      {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}
+                      {pendente && indo === proximo.id ? (
+                        <Loader2 className="animate-spin" data-icon="inline-end" />
+                      ) : (
+                        <ChevronRight data-icon="inline-end" />
+                      )}
                     </Button>
                   ) : null}
                 </div>
@@ -255,6 +266,7 @@ function FaixaCapitulos({
   cotacao,
   valores,
   onAbrir,
+  carregando = null,
   arquivo,
 }: {
   capitulos: Capitulo[]
@@ -262,6 +274,7 @@ function FaixaCapitulos({
   cotacao: CotacaoLida
   valores: Valores
   onAbrir: (id: string) => void
+  carregando?: string | null
   arquivo?: ReactNode
 }) {
   const grupos: { nome: string; itens: { item: Capitulo; indice: number }[] }[] = []
@@ -304,8 +317,14 @@ function FaixaCapitulos({
                     aria-current={ativo ? 'page' : undefined}
                     aria-label={rotuloCapitulo(indice, item.nome, tom, adesao?.percentual)}
                   >
-                    <MarcaTom tom={tom} indice={indice} completo={!falta} />
-                    <span className="min-w-0 flex-1 truncate">{item.nome}</span>
+                    {carregando === item.id ? (
+                      <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                    ) : (
+                      <MarcaTom tom={tom} indice={indice} completo={!falta} />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {carregando === item.id ? 'Carregando' : item.nome}
+                    </span>
                     {falta ? (
                       <span className="shrink-0 text-[0.7rem] tabular-nums">{adesao.percentual}%</span>
                     ) : null}

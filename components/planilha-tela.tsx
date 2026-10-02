@@ -12,9 +12,9 @@ import { formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
 import { lancamentoDaLinha } from '@/lib/projetos/lancamento'
 import type { Lancamento, Projeto } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 
 type Capitulo = {
   id: string
@@ -38,16 +38,29 @@ function texto(valor: number | null) {
   return valor == null ? '—' : formatarNumeroBR(valor)
 }
 
-export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: LinhaPlanilha[] }) {
+export function PlanilhaTela({
+  projeto,
+  linhas,
+  salvo = false,
+}: {
+  projeto: Projeto
+  linhas: LinhaPlanilha[]
+  salvo?: boolean
+}) {
   const capitulos = capitulosDe(linhas)
   const [valores, setValores] = useState(() => valoresIniciais(projeto, linhas))
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
   const [aviso, setAviso] = useState('')
-  const [baixando, setBaixando] = useState(false)
-  const [concluindo, setConcluindo] = useState(false)
+  const [indo, setIndo] = useState<string | null>(null)
+  const [pendente, iniciar] = useTransition()
   const router = useRouter()
   const atual = capitulos.find((item) => item.id === aberto) ?? capitulos[0]
   if (!atual) return null
+
+  function ir(id: string) {
+    setIndo(id)
+    iniciar(() => setAberto(id))
+  }
 
   function alterar(chave: string, campo: Partial<Lancamento>) {
     setValores((prev) => ({
@@ -57,35 +70,35 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
   }
 
   async function aoBaixar(form: HTMLFormElement) {
-    setBaixando(true)
     setAviso('')
     try {
       const erro = await baixarPlanilha(form)
       if (erro) setAviso(erro)
       else router.refresh()
+      return erro
     } catch {
-      setAviso('Não foi possível baixar a planilha.')
-    } finally {
-      setBaixando(false)
+      const texto = 'Não foi possível baixar a planilha.'
+      setAviso(texto)
+      return texto
     }
   }
 
   async function aoConcluir(form: HTMLFormElement) {
-    setConcluindo(true)
     setAviso('')
     try {
       const erro = await baixarPlanilha(form, { concluir: true })
       if (erro) setAviso(erro)
       else router.refresh()
+      return erro
     } catch {
-      setAviso('Não foi possível concluir o projeto.')
-    } finally {
-      setConcluindo(false)
+      const texto = 'Não foi possível concluir o projeto.'
+      setAviso(texto)
+      return texto
     }
   }
 
   return (
-    <form action={salvarPreenchimento} className="flex flex-col gap-4">
+    <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial
         nome={projeto.arquivoNome}
@@ -103,7 +116,7 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
                 key={item.id}
                 type="button"
                 title={item.nome}
-                onClick={() => setAberto(item.id)}
+                onClick={() => ir(item.id)}
                 aria-current={ativo ? 'page' : undefined}
                 className={cn(
                   'inline-flex max-w-60 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
@@ -114,8 +127,12 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
                 )}
               >
                 <span className="text-xs tabular-nums opacity-60">{indice + 1}</span>
-                {preenchido ? <Check className="size-3.5 shrink-0" aria-hidden /> : null}
-                <span className="truncate">{item.nome}</span>
+                {pendente && indo === item.id ? (
+                  <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                ) : preenchido ? (
+                  <Check className="size-3.5 shrink-0" aria-hidden />
+                ) : null}
+                <span className="truncate">{pendente && indo === item.id ? 'Carregando' : item.nome}</span>
               </button>
             )
           })}
@@ -140,9 +157,13 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
               {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
               <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-4 shadow-sm backdrop-blur">
                 {anterior ? (
-                  <Button type="button" variant="outline" onClick={() => setAberto(anterior.id)}>
-                    <ChevronLeft data-icon="inline-start" />
-                    {anterior.nome}
+                  <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
+                    {pendente && indo === anterior.id ? (
+                      <Loader2 className="animate-spin" data-icon="inline-start" />
+                    ) : (
+                      <ChevronLeft data-icon="inline-start" />
+                    )}
+                    {pendente && indo === anterior.id ? 'Carregando' : anterior.nome}
                   </Button>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -150,17 +171,15 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento
-                    ocupado={baixando || concluindo}
-                    baixando={baixando}
-                    concluindo={concluindo}
-                    onBaixar={(form) => void aoBaixar(form)}
-                    onConcluir={(form) => void aoConcluir(form)}
-                  />
+                  <AcoesPreenchimento salvo={salvo} onBaixar={aoBaixar} onConcluir={aoConcluir} />
                   {proximo ? (
-                    <Button type="button" onClick={() => setAberto(proximo.id)}>
-                      {proximo.nome}
-                      <ChevronRight data-icon="inline-end" />
+                    <Button type="button" onClick={() => ir(proximo.id)}>
+                      {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}
+                      {pendente && indo === proximo.id ? (
+                        <Loader2 className="animate-spin" data-icon="inline-end" />
+                      ) : (
+                        <ChevronRight data-icon="inline-end" />
+                      )}
                     </Button>
                   ) : null}
                 </div>

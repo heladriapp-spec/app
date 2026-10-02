@@ -1,4 +1,5 @@
 import { criarProjeto } from '@/app/actions/projetos'
+import { BotaoRascunho } from '@/components/botao-rascunho'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { FormPlanilha } from '@/components/form-planilha'
 import { Recado } from '@/components/recado'
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { requireUser } from '@/lib/auth/guard'
 import { dataHojeISO } from '@/lib/planilha/numeros'
-import { FolderPlus, Plus, Save } from 'lucide-react'
+import { FolderPlus, Plus } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function NovoProjetoPage({
@@ -49,10 +50,7 @@ export default async function NovoProjetoPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" name="acao" value="rascunho" variant="outline">
-            <Save data-icon="inline-start" />
-            Salvar rascunho
-          </Button>
+          <BotaoRascunho />
           <Button type="submit" name="acao" value="criar">
             <Plus data-icon="inline-start" />
             Criar projeto

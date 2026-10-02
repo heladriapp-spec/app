@@ -37,12 +37,6 @@ function temCabecalho(input: RequestInfo | URL, init: RequestInit | undefined, n
   return input instanceof Request && input.headers.has(nome)
 }
 
-function ehPlanilha(input: RequestInfo | URL, init?: RequestInit) {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase()
-  return method === 'POST' && /\/api\/projetos\/[\w-]+\/planilha(?:\?|$)/.test(url)
-}
-
 function mensagemDeErro(redirecionamento: string) {
   const caminho = redirecionamento.split(';')[0]
   if (!caminho) return ''
@@ -68,7 +62,8 @@ function instalar() {
     (evento) => {
       const form = evento.target
       if (!(form instanceof HTMLFormElement)) return
-      const aviso = form.dataset.aviso
+      const clicado = evento.submitter instanceof HTMLElement ? evento.submitter.dataset.aviso : ''
+      const aviso = clicado || form.dataset.aviso
       modo = aviso === 'sair' ? 'sair' : aviso === 'silencioso' ? 'silencioso' : 'acao'
     },
     true,
@@ -87,8 +82,7 @@ function instalar() {
 
   window.fetch = async (input, init) => {
     const acao = temCabecalho(input, init, 'next-action')
-    const download = ehPlanilha(input, init)
-    if (!acao && !download) return original(input, init)
+    if (!acao) return original(input, init)
 
     if (acao && modo === 'silencioso') {
       try {

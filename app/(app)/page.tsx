@@ -1,4 +1,5 @@
 import { BoasVindas } from '@/components/boas-vindas'
+import { LinkProjeto } from '@/components/link-projeto'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { Recado } from '@/components/recado'
 import { RemoverProjeto } from '@/components/remover-projeto'
@@ -57,7 +58,7 @@ export default async function InicioPage({
             return (
               <li key={projeto.id} className="rounded-2xl border bg-card shadow-sm">
                 <div className="flex items-center gap-4 px-4 py-4">
-                  <Link
+                  <LinkProjeto
                     href={`/projetos/${projeto.id}`}
                     className="flex min-w-0 flex-1 items-center gap-4"
                   >
@@ -76,7 +77,7 @@ export default async function InicioPage({
                         {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''} · {textoAlteracao(projeto)}
                       </span>
                     </span>
-                  </Link>
+                  </LinkProjeto>
                   {podeRemover && !confirmando ? (
                     <RemoverProjeto
                       id={projeto.id}

@@ -77,7 +77,8 @@ export default async function ProjetoPage({
         </div>
       ) : null}
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
-      {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
+      {avisos.ok && avisos.ok !== 'Documento salvo' ? <Recado tom="ok">{avisos.ok}</Recado> : null}
+      {avisos.ok === 'Documento salvo' && !lida ? <Recado tom="ok">Documento salvo</Recado> : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <CotacaoTela
             projetoId={projeto.id}
@@ -85,6 +86,7 @@ export default async function ProjetoPage({
             arquivoGerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
             cotacao={lida.cotacao}
             iniciais={valoresDaCotacao(projeto, lida.cotacao)}
+            salvo={avisos.ok === 'Documento salvo'}
           />
       ) : lida ? (
         <div className="flex flex-col gap-3">
@@ -94,7 +96,7 @@ export default async function ProjetoPage({
             {lida.capa.evento ? ` · ${lida.capa.evento}` : ''}
             {lida.capa.unidade ? ` · ${lida.capa.unidade}` : ''}
           </p>
-          <PlanilhaTela projeto={projeto} linhas={lida.linhas} />
+          <PlanilhaTela projeto={projeto} linhas={lida.linhas} salvo={avisos.ok === 'Documento salvo'} />
         </div>
       ) : (
         <div className="max-w-lg rounded-2xl border bg-card p-5 shadow-sm">

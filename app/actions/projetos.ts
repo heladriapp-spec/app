@@ -115,6 +115,7 @@ export async function criarProjeto(formData: FormData) {
       : `${usuario.login} criou o projeto “${nome}”.`,
     detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
   })
+  if (rascunho) redirect(`/projetos/${id}?ok=${encodeURIComponent('Documento salvo')}`)
   redirect(`/projetos/${id}`)
 }
 
@@ -259,7 +260,7 @@ async function gravarLancamentos(
     detalhe: { projeto: id },
   })
   const aviso = rascunho
-    ? 'Rascunho gravado.'
+    ? 'Documento salvo'
     : reabriu
       ? 'Preenchimento gravado. O projeto voltou para em preenchimento.'
       : 'Preenchimento gravado.'

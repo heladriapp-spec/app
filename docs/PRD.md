@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A próxima da fila é a modernidade nas ações: carregando, documento salvo e gerando o arquivo, no próprio botão. Excluir linha, o histórico de versões e o erro inesperado continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A próxima da fila é o histórico e as versões do preenchimento. Excluir linha e o histórico de versões continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -223,7 +223,7 @@ Na planilha exportada, a célula original do valor do serviço recebe somente es
 
 ### 6.9 Resposta na tela
 
-Quatro respostas para a pessoa não ficar sem saber o que a aplicação fez. As três primeiras estão na 0.8.0. O erro inesperado continua na fila.
+Quatro respostas para a pessoa não ficar sem saber o que a aplicação fez. As três primeiras estão na 0.8.0. O erro inesperado está na 0.10.0.
 
 **Boas-vindas.** Logo depois do login, antes da lista de projetos, aparece um recado com o nome da conta (`usuario.nome`). Texto curto, este:
 
@@ -254,7 +254,7 @@ A interação fica moderna e leve. O clique responde no próprio controle. A fra
 - Baixar ou concluir: gerando o arquivo, e depois o arquivo gerado.
 - Ir e voltar entre capítulos: botões de navegação, com o mesmo critério.
 
-O efeito é curto e fica no botão. Não entra animação que pese a tela. O aviso genérico **Processando** e **Ação concluída**, da 0.8.0, continua só para a ação que ainda não tem frase própria.
+O efeito é curto e fica no botão. Não entra animação que pese a tela. O aviso genérico **Processando** e **Ação concluída**, da 0.8.0, continua só para a ação que ainda não tem frase própria. Está na 0.11.0.
 
 ## 7. Fidelidade do arquivo
 
@@ -436,13 +436,13 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Aviso de processamento e de ação concluída | 0.12.0 | Processando, com relógio, e Ação concluída. Efetivo nesta 0.8.0 |
 | Sair com Alt+Esc | 0.13.0 | Alt+Esc e o botão Sair: Encerrando sessão e Sessão encerrada. Efetivo nesta 0.8.0 |
 | Modernidade da interface | 0.14.0 | Tela mais leve, com ícone onde o gesto já é claro e texto onde a pessoa precisa ler. Efetivo nesta 0.9.0 |
+| Erro inesperado para quem usa | 0.16.0 | Falha não prevista vira Erro inesperado. Consulte o administrador. Efetivo nesta 0.10.0 |
+| Modernidade nas ações | 0.15.0 | O clique responde no botão: carregando, documento salvo, gerando o arquivo. Efetivo nesta 0.11.0 |
 
 ### Ainda na fila
 
-1. **Modernidade nas ações** (0.15.0). O botão clicado mostra carregando, documento salvo ou gerando o arquivo. Não pergunta se deseja salvar. O efeito fica no controle (seção 6.11).
-2. **Erro inesperado. Consulte o administrador.** no lugar da falha crua. Recusa já prevista continua com o texto dela (seção 6.9).
-3. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
-4. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
+2. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 
