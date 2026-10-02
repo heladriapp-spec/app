@@ -3,10 +3,11 @@ import { canonizarStatus, opcoesStatus } from '@/lib/planilha/status'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
 import type { ExtraServico, Lancamento, Projeto, ProjetoLista, StatusProjeto } from '@/lib/projetos/tipos'
 import {
-  apagarFora,
+  apagarOnde,
+  atualizarOnde,
   baixarPlanilha,
   enviarPlanilha,
-  gravarTabela,
+  inserirLinha,
   lerTabela,
   removerPlanilha,
   supabaseConfigurado,
@@ -75,65 +76,24 @@ async function lerNuvem(): Promise<Projeto[]> {
   }))
 }
 
-async function gravarNuvem(projetos: Projeto[]) {
-  await gravarTabela(
-    'projetos',
-    projetos.map((item) => ({
-      id: item.id,
-      nome: item.nome,
-      data: item.data,
-      criado_em: item.criadoEm,
-      criado_por: item.criadoPor,
-      atualizado_em: item.atualizadoEm,
-      atualizado_por: item.atualizadoPor,
-      arquivo_nome: item.arquivoNome,
-      arquivo_caminho: item.arquivoNome ? `${item.id}.xlsx` : null,
-      arquivo_gerado_nome: item.arquivoGeradoNome,
-      concluido_em: item.concluidoEm,
-      concluido_por: item.concluidoPor,
-      capa: item.capa,
-      status: item.status,
-      lancamentos: item.lancamentos,
-    })),
-  )
-  await apagarFora(
-    'projeto_participantes',
-    'projeto_id',
-    [],
-  )
-  await gravarTabela(
-    'projeto_participantes',
-    projetos.flatMap((item) => item.participantes.map((usuarioId) => ({ projeto_id: item.id, usuario_id: usuarioId }))),
-  )
-  await apagarFora(
-    'projetos',
-    'id',
-    projetos.map((item) => item.id),
-  )
-}
-
 async function gravarIndice(projetos: Projeto[]) {
   await mkdir(PASTA, { recursive: true })
   await writeFile(INDICE, JSON.stringify({ projetos }, null, 2), { mode: 0o600 })
 }
 
-/** Só o JSON local. No Supabase, a exclusão do usuário cai na cascata já existente. */
-export async function tirarParticipanteLocal(usuarioId: string) {
-  if (supabaseConfigurado()) return
-  if (!/^[\w-]+$/.test(usuarioId)) return
-  await alterarProjetos((projetos) => {
-    for (const projeto of projetos) {
-      projeto.participantes = projeto.participantes.filter((item) => item !== usuarioId)
-    }
-  })
-}
-
-export async function alterarProjetos<T>(fn: (projetos: Projeto[]) => T | Promise<T>): Promise<T> {
+/** O arquivo local inteiro muda de uma vez. A regra só altera o projeto pedido. */
+function alterarIndice<T>(fn: (projetos: Projeto[]) => T | Promise<T>): Promise<T> {
   const exec = fila.then(async () => {
-    const projetos = await lerIndice()
+    let projetos: Projeto[] = []
+    try {
+      const bruto = await readFile(INDICE, 'utf8')
+      const json = JSON.parse(bruto) as { projetos?: Projeto[] }
+      projetos = (json.projetos ?? []).map(completarProjeto)
+    } catch (erro) {
+      if ((erro as NodeJS.ErrnoException).code !== 'ENOENT') throw erro
+    }
     const resultado = await fn(projetos)
-    if (supabaseConfigurado()) await gravarNuvem(projetos)
-    else await gravarIndice(projetos)
+    await gravarIndice(projetos)
     return resultado
   })
   fila = exec.then(
@@ -141,6 +101,161 @@ export async function alterarProjetos<T>(fn: (projetos: Projeto[]) => T | Promis
     () => undefined,
   )
   return exec
+}
+
+export const AVISO_PROJETO_DESATUALIZADO =
+  'Alguém gravou este projeto agora. Recarregue a página antes de salvar de novo.'
+
+export class ProjetoDesatualizado extends Error {
+  constructor() {
+    super(AVISO_PROJETO_DESATUALIZADO)
+    this.name = 'ProjetoDesatualizado'
+  }
+}
+
+export type PatchProjeto = Partial<
+  Pick<
+    Projeto,
+    | 'nome'
+    | 'data'
+    | 'atualizadoPor'
+    | 'arquivoNome'
+    | 'arquivoGeradoNome'
+    | 'concluidoEm'
+    | 'concluidoPor'
+    | 'capa'
+    | 'status'
+    | 'lancamentos'
+  >
+>
+
+function linhaDe(projeto: Projeto) {
+  return {
+    id: projeto.id,
+    nome: projeto.nome,
+    data: projeto.data,
+    criado_em: projeto.criadoEm,
+    criado_por: projeto.criadoPor,
+    atualizado_em: projeto.atualizadoEm,
+    atualizado_por: projeto.atualizadoPor,
+    arquivo_nome: projeto.arquivoNome,
+    arquivo_caminho: projeto.arquivoNome ? `${projeto.id}.xlsx` : null,
+    arquivo_gerado_nome: projeto.arquivoGeradoNome,
+    concluido_em: projeto.concluidoEm,
+    concluido_por: projeto.concluidoPor,
+    capa: projeto.capa,
+    status: projeto.status,
+    lancamentos: projeto.lancamentos,
+  }
+}
+
+function aplicarPatch(atual: Projeto, patch: PatchProjeto, agora: string) {
+  if (patch.nome !== undefined) atual.nome = patch.nome
+  if (patch.data !== undefined) atual.data = patch.data
+  if (patch.atualizadoPor !== undefined) atual.atualizadoPor = patch.atualizadoPor
+  if (patch.arquivoNome !== undefined) atual.arquivoNome = patch.arquivoNome
+  if (patch.arquivoGeradoNome !== undefined) atual.arquivoGeradoNome = patch.arquivoGeradoNome
+  if (patch.concluidoEm !== undefined) atual.concluidoEm = patch.concluidoEm
+  if (patch.concluidoPor !== undefined) atual.concluidoPor = patch.concluidoPor
+  if (patch.capa !== undefined) atual.capa = patch.capa
+  if (patch.status !== undefined) atual.status = patch.status
+  if (patch.lancamentos !== undefined) atual.lancamentos = patch.lancamentos
+  atual.atualizadoEm = agora
+}
+
+function corpoDoPatch(id: string, patch: PatchProjeto, agora: string) {
+  const corpo: Record<string, unknown> = { atualizado_em: agora }
+  if (patch.nome !== undefined) corpo.nome = patch.nome
+  if (patch.data !== undefined) corpo.data = patch.data
+  if (patch.atualizadoPor !== undefined) corpo.atualizado_por = patch.atualizadoPor
+  if (patch.arquivoNome !== undefined) {
+    corpo.arquivo_nome = patch.arquivoNome
+    corpo.arquivo_caminho = patch.arquivoNome ? `${id}.xlsx` : null
+  }
+  if (patch.arquivoGeradoNome !== undefined) corpo.arquivo_gerado_nome = patch.arquivoGeradoNome
+  if (patch.concluidoEm !== undefined) corpo.concluido_em = patch.concluidoEm
+  if (patch.concluidoPor !== undefined) corpo.concluido_por = patch.concluidoPor
+  if (patch.capa !== undefined) corpo.capa = patch.capa
+  if (patch.status !== undefined) corpo.status = patch.status
+  if (patch.lancamentos !== undefined) corpo.lancamentos = patch.lancamentos
+  return corpo
+}
+
+/** Só o JSON local. No Supabase, a exclusão do usuário cai na cascata já existente. */
+export async function tirarParticipanteLocal(usuarioId: string) {
+  if (supabaseConfigurado()) return
+  if (!idSeguro(usuarioId)) return
+  await alterarIndice((projetos) => {
+    for (const projeto of projetos) {
+      projeto.participantes = projeto.participantes.filter((item) => item !== usuarioId)
+    }
+  })
+}
+
+export async function inserirProjeto(projeto: Projeto) {
+  if (!idSeguro(projeto.id)) throw new Error('Identificador inválido.')
+  const completo = completarProjeto(projeto)
+  if (!supabaseConfigurado()) {
+    await alterarIndice((projetos) => {
+      if (projetos.some((item) => item.id === completo.id)) return
+      projetos.push(completo)
+    })
+    return
+  }
+  await inserirLinha('projetos', linhaDe(completo), 'id')
+  try {
+    for (const usuarioId of completo.participantes) {
+      if (!idSeguro(usuarioId)) throw new Error('Participante inválido.')
+      await inserirLinha(
+        'projeto_participantes',
+        { projeto_id: completo.id, usuario_id: usuarioId },
+        'projeto_id,usuario_id',
+      )
+    }
+  } catch (erro) {
+    await apagarOnde('projetos', `id=eq.${completo.id}`).catch(() => undefined)
+    throw erro
+  }
+}
+
+/**
+ * Grava só esta linha. `vistoEm` é o `atualizado_em` lido antes, sem reformatar.
+ * Devolve o valor que o banco gravou. Zero linhas com o projeto ainda lá é conflito.
+ */
+export async function gravarProjeto(id: string, vistoEm: string, patch: PatchProjeto): Promise<string> {
+  if (!idSeguro(id) || !vistoEm) throw new Error('Projeto não encontrado.')
+  const agora = new Date().toISOString()
+  if (!supabaseConfigurado()) {
+    return alterarIndice((projetos) => {
+      const atual = projetos.find((item) => item.id === id)
+      if (!atual) throw new Error('Projeto não encontrado.')
+      if (atual.atualizadoEm !== vistoEm) throw new ProjetoDesatualizado()
+      aplicarPatch(atual, patch, agora)
+      return agora
+    })
+  }
+  const linhas = await atualizarOnde<{ atualizado_em: string }>(
+    'projetos',
+    `id=eq.${id}&atualizado_em=eq.${encodeURIComponent(vistoEm)}&select=atualizado_em`,
+    corpoDoPatch(id, patch, agora),
+  )
+  const gravado = linhas[0]?.atualizado_em
+  if (gravado) return gravado
+  const existe = await lerTabela<{ id: string }>('projetos', `select=id&id=eq.${id}&limit=1`)
+  if (existe.length === 0) throw new Error('Projeto não encontrado.')
+  throw new ProjetoDesatualizado()
+}
+
+export async function apagarProjeto(id: string) {
+  if (!idSeguro(id)) return
+  if (!supabaseConfigurado()) {
+    await alterarIndice((projetos) => {
+      const indice = projetos.findIndex((item) => item.id === id)
+      if (indice >= 0) projetos.splice(indice, 1)
+    })
+    return
+  }
+  await apagarOnde('projetos', `id=eq.${id}`)
 }
 
 const COLUNAS_LISTA = 'id,nome,data,status,criado_por,atualizado_em,atualizado_por,arquivo_nome'

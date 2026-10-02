@@ -7,18 +7,20 @@ import { lancamentosIguais } from '@/lib/projetos/lancamento'
 import { dataHojeISO } from '@/lib/planilha/numeros'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
 import {
-  alterarProjetos,
   apagarArquivoDoProjeto,
   apagarArquivoGerado,
+  apagarProjeto,
   aplicarPlanilha,
   gravarArquivoDoProjeto,
-  limparConclusao,
+  gravarProjeto,
+  inserirProjeto,
   planilhaDoProjeto,
+  ProjetoDesatualizado,
   projetoPorId,
 } from '@/lib/projetos/store'
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import type { Projeto } from '@/lib/projetos/tipos'
-import { alterarStore, registrarNo } from '@/lib/operacao/store'
+import { registrarEvento } from '@/lib/operacao/store'
 import { redirect } from 'next/navigation'
 
 function voltar(caminho: string, texto: string, ok = false): never {
@@ -90,18 +92,13 @@ export async function criarProjeto(formData: FormData) {
 
   let falha: unknown = null
   try {
-    await alterarProjetos((projetos) => {
-      projetos.push(projeto)
-    })
+    await inserirProjeto(projeto)
     if (upload) await gravarArquivoDoProjeto(id, upload.buf)
   } catch (erro) {
     falha = erro
   }
   if (falha) {
-    await alterarProjetos((projetos) => {
-      const indice = projetos.findIndex((item) => item.id === id)
-      if (indice >= 0) projetos.splice(indice, 1)
-    }).catch(() => undefined)
+    await apagarProjeto(id).catch(() => undefined)
     if (upload) await apagarArquivoDoProjeto(id).catch(() => undefined)
     voltar(
       '/projetos/novo',
@@ -109,16 +106,14 @@ export async function criarProjeto(formData: FormData) {
     )
   }
 
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'PROJECT_CREATED',
-      ator: usuario.login,
-      mensagem: rascunho
-        ? `${usuario.login} salvou o rascunho “${nome}”.`
-        : `${usuario.login} criou o projeto “${nome}”.`,
-      detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
-    })
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PROJECT_CREATED',
+    ator: usuario.login,
+    mensagem: rascunho
+      ? `${usuario.login} salvou o rascunho “${nome}”.`
+      : `${usuario.login} criou o projeto “${nome}”.`,
+    detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
   })
   redirect(`/projetos/${id}`)
 }
@@ -130,20 +125,14 @@ export async function removerProjeto(formData: FormData) {
   if (!projeto) voltar('/', 'Projeto não encontrado.')
   if (!podeRemover(usuario, projeto)) voltar('/', 'Você só pode remover um projeto que você criou.')
 
-  await alterarProjetos(async (projetos) => {
-    const indice = projetos.findIndex((item) => item.id === id)
-    if (indice < 0) return
-    await apagarArquivoDoProjeto(projetos[indice].id)
-    projetos.splice(indice, 1)
-  })
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'PROJECT_REMOVED',
-      ator: usuario.login,
-      mensagem: `${usuario.login} removeu o projeto “${projeto.nome}”.`,
-      detalhe: { projeto: id },
-    })
+  await apagarArquivoDoProjeto(id)
+  await apagarProjeto(id)
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PROJECT_REMOVED',
+    ator: usuario.login,
+    mensagem: `${usuario.login} removeu o projeto “${projeto.nome}”.`,
+    detalhe: { projeto: id },
   })
   voltar('/', `Projeto “${projeto.nome}” removido.`, true)
 }
@@ -166,10 +155,15 @@ export async function carregarPlanilha(formData: FormData) {
   try {
     await gravarArquivoDoProjeto(id, upload.buf)
     await apagarArquivoGerado(id)
-    await alterarProjetos((projetos) => {
-      const atual = projetos.find((item) => item.id === id)
-      if (!atual) return
-      aplicarPlanilha(atual, upload.nome, upload.lida, usuario.login, atual.status === 'rascunho')
+    await gravarProjeto(id, projeto.atualizadoEm, {
+      arquivoNome: upload.nome,
+      capa: upload.lida.capa,
+      status: projeto.status === 'rascunho' ? 'rascunho' : 'em_preenchimento',
+      lancamentos: {},
+      arquivoGeradoNome: null,
+      concluidoEm: null,
+      concluidoPor: null,
+      atualizadoPor: usuario.login,
     })
   } catch (erro) {
     falha = erro
@@ -177,17 +171,19 @@ export async function carregarPlanilha(formData: FormData) {
   if (falha) {
     voltar(
       `/projetos/${id}`,
-      falha instanceof Error ? falha.message : 'Não foi possível guardar a planilha.',
+      falha instanceof ProjetoDesatualizado
+        ? falha.message
+        : falha instanceof Error
+          ? falha.message
+          : 'Não foi possível guardar a planilha.',
     )
   }
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'PROJECT_FILE',
-      ator: usuario.login,
-      mensagem: `${usuario.login} carregou a planilha em “${projeto.nome}”.`,
-      detalhe: { projeto: id },
-    })
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PROJECT_FILE',
+    ator: usuario.login,
+    mensagem: `${usuario.login} carregou a planilha em “${projeto.nome}”.`,
+    detalhe: { projeto: id },
   })
   redirect(`/projetos/${id}`)
 }
@@ -230,34 +226,37 @@ async function gravarLancamentos(
   rascunho: boolean,
 ) {
   const antes = await projetoPorId(id)
+  if (!antes) voltar(`/projetos/${id}`, 'Projeto não encontrado.')
   const reabriu = Boolean(
-    !rascunho && antes?.status === 'concluido' && !lancamentosIguais(antes.lancamentos, lancamentos),
+    !rascunho && antes.status === 'concluido' && !lancamentosIguais(antes.lancamentos, lancamentos),
   )
   if (rascunho || reabriu) await apagarArquivoGerado(id)
-  await alterarProjetos((projetos) => {
-    const atual = projetos.find((item) => item.id === id)
-    if (!atual) return
-    atual.lancamentos = lancamentos
-    atual.atualizadoEm = new Date().toISOString()
-    atual.atualizadoPor = ator
-    if (rascunho) {
-      atual.status = 'rascunho'
-      limparConclusao(atual)
-    } else if (reabriu) {
-      atual.status = 'em_preenchimento'
-      limparConclusao(atual)
-    }
-  })
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: rascunho ? 'PROJECT_DRAFT' : 'PROJECT_SAVED',
-      ator,
-      mensagem: rascunho
-        ? `${ator} salvou o rascunho de “${nome}”.`
-        : `${ator} gravou o preenchimento de “${nome}”.`,
-      detalhe: { projeto: id },
+  try {
+    await gravarProjeto(id, antes.atualizadoEm, {
+      lancamentos,
+      atualizadoPor: ator,
+      ...(rascunho
+        ? { status: 'rascunho' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
+        : {}),
+      ...(reabriu
+        ? { status: 'em_preenchimento' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
+        : {}),
     })
+  } catch (erro) {
+    if (erro instanceof ProjetoDesatualizado) voltar(`/projetos/${id}`, erro.message)
+    if (erro instanceof Error && erro.message === 'Projeto não encontrado.') {
+      voltar(`/projetos/${id}`, erro.message)
+    }
+    throw erro
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: rascunho ? 'PROJECT_DRAFT' : 'PROJECT_SAVED',
+    ator,
+    mensagem: rascunho
+      ? `${ator} salvou o rascunho de “${nome}”.`
+      : `${ator} gravou o preenchimento de “${nome}”.`,
+    detalhe: { projeto: id },
   })
   const aviso = rascunho
     ? 'Rascunho gravado.'

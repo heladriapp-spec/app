@@ -2,15 +2,15 @@ import { usuarioDaSessao } from '@/lib/auth/guard'
 import { aplicarPreenchimento } from '@/lib/planilha/gravar'
 import { lancamentosIguais } from '@/lib/projetos/lancamento'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
-import { alterarStore, registrarNo } from '@/lib/operacao/store'
+import { registrarEvento } from '@/lib/operacao/store'
 import {
-  alterarProjetos,
   apagarArquivoGerado,
   gravarArquivoGerado,
+  gravarProjeto,
   lerArquivoDoProjeto,
-  limparConclusao,
   nomeDeDownload,
   planilhaDoProjeto,
+  ProjetoDesatualizado,
   projetoPorId,
 } from '@/lib/projetos/store'
 import type { Lancamento } from '@/lib/projetos/tipos'
@@ -41,17 +41,20 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
   const reabriu =
     !concluir && projeto.status === 'concluido' && !lancamentosIguais(projeto.lancamentos, lancamentos)
   if (reabriu) await apagarArquivoGerado(id)
-  await alterarProjetos((projetos) => {
-    const atual = projetos.find((item) => item.id === id)
-    if (!atual) return
-    atual.lancamentos = lancamentos
-    atual.atualizadoEm = new Date().toISOString()
-    atual.atualizadoPor = usuario.login
-    if (reabriu) {
-      atual.status = 'em_preenchimento'
-      limparConclusao(atual)
-    }
-  })
+  let vistoEm: string
+  try {
+    vistoEm = await gravarProjeto(id, projeto.atualizadoEm, {
+      lancamentos,
+      atualizadoPor: usuario.login,
+      ...(reabriu
+        ? { status: 'em_preenchimento' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
+        : {}),
+    })
+  } catch (erro) {
+    if (erro instanceof ProjetoDesatualizado) return texto(erro.message, 409)
+    if (erro instanceof Error && erro.message === 'Projeto não encontrado.') return texto(erro.message, 404)
+    throw erro
+  }
 
   let arquivo: Buffer
   try {
@@ -67,28 +70,30 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
     } catch {
       return texto('Não foi possível gravar a planilha gerada.', 500)
     }
-    await alterarProjetos((projetos) => {
-      const atual = projetos.find((item) => item.id === id)
-      if (!atual) return
-      atual.status = 'concluido'
-      atual.arquivoGeradoNome = nome
-      atual.concluidoEm = new Date().toISOString()
-      atual.concluidoPor = usuario.login
-      atual.atualizadoEm = atual.concluidoEm
-      atual.atualizadoPor = usuario.login
-    })
+    const concluidoEm = new Date().toISOString()
+    try {
+      await gravarProjeto(id, vistoEm, {
+        status: 'concluido',
+        arquivoGeradoNome: nome,
+        concluidoEm,
+        concluidoPor: usuario.login,
+        atualizadoPor: usuario.login,
+      })
+    } catch (erro) {
+      if (erro instanceof ProjetoDesatualizado) return texto(erro.message, 409)
+      if (erro instanceof Error && erro.message === 'Projeto não encontrado.') return texto(erro.message, 404)
+      throw erro
+    }
   }
 
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: concluir ? 'PROJECT_CONCLUDED' : 'PROJECT_DOWNLOADED',
-      ator: usuario.login,
-      mensagem: concluir
-        ? `${usuario.login} concluiu “${projeto.nome}” e gerou a planilha.`
-        : `${usuario.login} baixou a planilha preenchida de “${projeto.nome}”.`,
-      detalhe: { projeto: id, arquivo: nome },
-    })
+  await registrarEvento({
+    nivel: 'info',
+    evento: concluir ? 'PROJECT_CONCLUDED' : 'PROJECT_DOWNLOADED',
+    ator: usuario.login,
+    mensagem: concluir
+      ? `${usuario.login} concluiu “${projeto.nome}” e gerou a planilha.`
+      : `${usuario.login} baixou a planilha preenchida de “${projeto.nome}”.`,
+    detalhe: { projeto: id, arquivo: nome },
   })
   return new Response(new Uint8Array(arquivo), {
     headers: {
