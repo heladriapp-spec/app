@@ -25,6 +25,8 @@ export type Lancamento = {
   /** Valor antes dos extras. Permanece quando o campo visível passa a mostrar o final. */
   valorBase?: string
   extras?: ExtraServico[]
+  /** Classificação do levantamento escolhida na tela. */
+  status?: string
 }
 
 export type Projeto = {

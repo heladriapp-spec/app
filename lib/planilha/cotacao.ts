@@ -25,6 +25,7 @@ export type ItemCotacao = {
   colunaValor: string
   colunaTotal: string
   colunaObservacao: string
+  colunaStatus: string
 }
 
 export type FaseCronograma = {
@@ -141,6 +142,7 @@ function itensDe(grade: Grade, tipo: 'materiais' | 'mao') {
       colunaValor: valor,
       colunaTotal: total,
       colunaObservacao: observacao,
+      colunaStatus: status,
     })
   }
   return itens

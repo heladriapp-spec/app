@@ -15,17 +15,19 @@ import {
   valorFinalServico,
 } from '@/lib/planilha/extra'
 import { formatarMoedaBR, formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
+import { adesaoDe, opcoesStatus, type OpcaoStatus } from '@/lib/planilha/status'
 import type { ExtraServico } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type ValorItem = {
   valor: string
   observacao: string
   valorBase: string
   extras: ExtraServico[]
+  status: string
 }
 
 type Valores = Record<string, ValorItem>
@@ -79,6 +81,7 @@ export function CotacaoTela({
         observacao: prev[codigo]?.observacao ?? '',
         valorBase: prev[codigo]?.valorBase ?? '',
         extras: prev[codigo]?.extras ?? [],
+        status: prev[codigo]?.status ?? '',
         ...campo,
       },
     }))
@@ -122,7 +125,7 @@ export function CotacaoTela({
             Capítulos
           </p>
           <p className="px-2.5 pb-2 text-[0.7rem] leading-snug text-muted-foreground">
-            Verde, capítulo preenchido. Laranja, ainda falta valor.
+            Verde, capítulo preenchido. Laranja, ainda falta valor. O percentual é a parte aderente.
           </p>
           {capitulos.map((item, indice) => {
             const estado = capituloPreenchido(item, cotacao, valores)
@@ -142,11 +145,9 @@ export function CotacaoTela({
                   aria-current={item.id === atual.id ? 'page' : undefined}
                 >
                   <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{item.nome}</span>
-                    <span className="block truncate text-[0.7rem] opacity-70">
-                      {dicaCapitulo(item, cotacao, valores)}
-                    </span>
+                    <DicaCapitulo capitulo={item} cotacao={cotacao} valores={valores} />
                   </span>
                 </button>
               </div>
@@ -175,9 +176,15 @@ export function CotacaoTela({
                 </p>
                 <h2 className="text-lg font-semibold">{item.nome}</h2>
                 {itens.length > 0 ? (
-                  <p className="mt-1 text-sm text-muted-foreground tabular-nums">
-                    {itens.length} {itens.length === 1 ? 'item' : 'itens'} · {formatarMoedaBR(subtotal)}
-                  </p>
+                  <>
+                    <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+                      {itens.length} {itens.length === 1 ? 'item' : 'itens'} · {formatarMoedaBR(subtotal)}
+                    </p>
+                    <BarraConclusao
+                      nome={item.nome}
+                      statuses={itens.map((linha) => valores[linha.codigo]?.status || linha.status)}
+                    />
+                  </>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">{resumoCapitulo(item)}</p>
                 )}
@@ -272,13 +279,69 @@ function capituloPreenchido(capitulo: Capitulo, cotacao: CotacaoLida, valores: V
   return itens.every((item) => (valores[item.codigo]?.valor ?? '').trim().length > 0)
 }
 
-function dicaCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
-  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return capitulo.kicker
+function itensDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida) {
+  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return []
   const fonte = capitulo.origem === 'materiais' ? cotacao.materiais : cotacao.maoDeObra
-  const itens = fonte.filter((item) => item.grupo === capitulo.grupo)
-  const faltam = itens.filter((item) => !(valores[item.codigo]?.valor ?? '').trim()).length
-  if (faltam === 0) return `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} · preenchido`
-  return `${faltam} sem valor`
+  return fonte.filter((item) => item.grupo === capitulo.grupo)
+}
+
+function DicaCapitulo({
+  capitulo,
+  cotacao,
+  valores,
+}: {
+  capitulo: Capitulo
+  cotacao: CotacaoLida
+  valores: Valores
+}) {
+  if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') {
+    return <span className="block truncate text-[0.7rem] opacity-70">{capitulo.kicker}</span>
+  }
+  const itens = itensDoCapitulo(capitulo, cotacao)
+  const adesao = adesaoDe(itens.map((item) => valores[item.codigo]?.status || item.status))
+  return (
+    <span className="mt-0.5 flex items-center gap-2 text-[0.7rem] opacity-80">
+      <span className="truncate">
+        {itens.length} {itens.length === 1 ? 'item' : 'itens'}
+      </span>
+      {adesao ? (
+        <>
+          <span className="h-1 w-10 shrink-0 overflow-hidden rounded-full bg-current/25" aria-hidden>
+            <span className="block h-full bg-current" style={{ width: `${adesao.percentual}%` }} />
+          </span>
+          <span className="shrink-0 tabular-nums" title="Parte aderente: sem pendente e sem divergente">
+            {adesao.percentual}%
+          </span>
+        </>
+      ) : null}
+    </span>
+  )
+}
+
+function BarraConclusao({ nome, statuses }: { nome: string; statuses: string[] }) {
+  const adesao = adesaoDe(statuses)
+  if (!adesao) return null
+  return (
+    <div className="mt-3 max-w-sm">
+      <div className="flex items-baseline justify-between gap-3 text-xs">
+        <span className="text-muted-foreground">Conclusão</span>
+        <span className="font-medium tabular-nums">{adesao.percentual}%</span>
+      </div>
+      <div
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={adesao.percentual}
+        aria-label={`${adesao.aderentes} de ${adesao.total} itens aderentes em ${nome}`}
+      >
+        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${adesao.percentual}%` }} />
+      </div>
+      <p className="mt-1 text-[0.7rem] text-muted-foreground">
+        {`${adesao.aderentes} de ${adesao.total} ${adesao.total === 1 ? 'aderente' : 'aderentes'}. Pendente e divergente ficam de fora.`}
+      </p>
+    </div>
+  )
 }
 
 function resumoCapitulo(capitulo: Capitulo) {
@@ -359,7 +422,7 @@ function ListaItens({
   totais: Map<string, number | null>
   onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
 }) {
-  const significados = new Map(legenda.map((item) => [item.status, item.texto]))
+  const opcoes = opcoesStatus(legenda)
   return (
     <div className="grid gap-3 xl:grid-cols-2">
       {itens.map((item) => (
@@ -371,8 +434,9 @@ function ListaItens({
           valorBase={valores[item.codigo]?.valorBase ?? ''}
           extras={valores[item.codigo]?.extras ?? []}
           observacao={valores[item.codigo]?.observacao ?? ''}
+          status={valores[item.codigo]?.status || item.status}
+          opcoes={opcoes}
           total={totais.get(item.codigo) ?? null}
-          significado={significados.get(item.status) ?? ''}
           onAlterar={onAlterar}
         />
       ))}
@@ -387,8 +451,9 @@ function ItemCard({
   valorBase,
   extras,
   observacao,
+  status,
+  opcoes,
   total,
-  significado,
   onAlterar,
 }: {
   item: ItemCotacao
@@ -397,8 +462,9 @@ function ItemCard({
   valorBase: string
   extras: ExtraServico[]
   observacao: string
+  status: string
+  opcoes: OpcaoStatus[]
   total: number | null
-  significado: string
   onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
 }) {
   const valorId = `valor-${item.codigo}`
@@ -465,7 +531,12 @@ function ItemCard({
               <p className="text-xs text-muted-foreground">{item.codigo}</p>
               <h4 className="font-medium leading-snug">{item.titulo}</h4>
             </div>
-            {item.status ? <StatusBadge status={item.status} titulo={significado} /> : null}
+            <SeletorStatus
+              codigo={item.codigo}
+              status={status}
+              opcoes={opcoes}
+              onEscolher={(proximo) => onAlterar(item.codigo, { status: proximo })}
+            />
           </header>
           {item.detalhe ? <p className="text-sm leading-relaxed text-muted-foreground">{item.detalhe}</p> : null}
           {item.local ? (
@@ -562,6 +633,7 @@ function ItemCard({
               })}
             </ul>
           ) : null}
+          <input type="hidden" name={`status:${item.codigo}`} value={status} />
           {servico ? (
             <>
               <input type="hidden" name={`base:${item.codigo}`} value={valorBase} />
@@ -710,7 +782,7 @@ function Resumo({
   const materiais = linhas.reduce((acc, linha) => acc + linha.total, 0)
   const mao = cotacao.maoDeObra.reduce((acc, item) => acc + (totais.get(item.codigo) ?? 0), 0)
   const geral = materiais + mao
-  const contagem = contarStatus([...cotacao.materiais, ...cotacao.maoDeObra])
+  const contagem = contarStatus([...cotacao.materiais, ...cotacao.maoDeObra], iniciais)
   const semValor = [...cotacao.materiais, ...cotacao.maoDeObra].filter(
     (item) => !(iniciais[item.codigo]?.valor ?? '').trim(),
   ).length
@@ -846,6 +918,88 @@ function Fase({ fase }: { fase: FaseCronograma }) {
   )
 }
 
+function SeletorStatus({
+  codigo,
+  status,
+  opcoes,
+  onEscolher,
+}: {
+  codigo: string
+  status: string
+  opcoes: OpcaoStatus[]
+  onEscolher: (status: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const caixa = useRef<HTMLDivElement>(null)
+  const atual = opcoes.find((item) => item.status === status)
+  const listaId = `status-lista-${codigo}`
+
+  useEffect(() => {
+    if (!aberto) return
+    function fora(evento: MouseEvent) {
+      if (!caixa.current?.contains(evento.target as Node)) setAberto(false)
+    }
+    function tecla(evento: KeyboardEvent) {
+      if (evento.key === 'Escape') setAberto(false)
+    }
+    document.addEventListener('mousedown', fora)
+    document.addEventListener('keydown', tecla)
+    return () => {
+      document.removeEventListener('mousedown', fora)
+      document.removeEventListener('keydown', tecla)
+    }
+  }, [aberto])
+
+  return (
+    <div ref={caixa} className="relative shrink-0">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={aberto}
+        aria-controls={listaId}
+        aria-label={`Classificar ${codigo}. Status atual: ${status || 'nenhum'}`}
+        title={atual?.texto}
+        onClick={() => setAberto((valor) => !valor)}
+        className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <StatusBadge status={status || 'Status'} />
+      </button>
+      {aberto ? (
+        <ul
+          id={listaId}
+          role="listbox"
+          aria-label={`Status de ${codigo}`}
+          className="absolute right-0 z-30 mt-1 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border bg-popover p-1 text-popover-foreground shadow-lg"
+        >
+          {opcoes.map((opcao) => {
+            const selecionado = opcao.status === status
+            return (
+              <li key={opcao.status}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selecionado}
+                  onClick={() => {
+                    onEscolher(opcao.status)
+                    setAberto(false)
+                  }}
+                  className={cn(
+                    'flex w-full flex-col items-start gap-1 rounded-lg px-2 py-1.5 text-left hover:bg-muted',
+                    selecionado && 'bg-muted',
+                  )}
+                >
+                  <StatusBadge status={opcao.status} />
+                  <span className="text-xs leading-snug text-muted-foreground">{opcao.texto}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 function StatusBadge({ status, titulo }: { status: string; titulo?: string }) {
   return (
     <span
@@ -883,11 +1037,12 @@ function totalDoItem(quantidade: string, valor: string) {
   return Math.round((qtde * unitario + Number.EPSILON) * 100) / 100
 }
 
-function contarStatus(itens: ItemCotacao[]) {
+function contarStatus(itens: ItemCotacao[], valores: Valores) {
   const mapa = new Map<string, number>()
   for (const item of itens) {
-    if (!item.status) continue
-    mapa.set(item.status, (mapa.get(item.status) ?? 0) + 1)
+    const status = valores[item.codigo]?.status || item.status
+    if (!status) continue
+    mapa.set(status, (mapa.get(status) ?? 0) + 1)
   }
   return [...mapa.entries()].map(([status, quantidade]) => ({ status, quantidade }))
 }

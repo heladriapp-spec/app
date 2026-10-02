@@ -48,6 +48,9 @@ function aplicarCotacao(
     if (item.temObservacao && item.colunaObservacao) {
       xml = escreverTexto(xml, `${item.colunaObservacao}${item.linha}`, salvo.observacao ?? '')
     }
+    if (item.colunaStatus && salvo.status) {
+      xml = escreverTexto(xml, `${item.colunaStatus}${item.linha}`, salvo.status)
+    }
   }
   pasta.arquivos.set(caminho, Buffer.from(xml))
 }

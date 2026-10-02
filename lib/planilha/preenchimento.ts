@@ -1,5 +1,6 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { lerExtras, valorExportado } from '@/lib/planilha/extra'
+import { canonizarStatus, chaveStatus, opcoesStatus } from '@/lib/planilha/status'
 import type { LinhaPlanilha } from '@/lib/planilha/ler'
 import { lerNumeroBR } from '@/lib/planilha/numeros'
 import type { Lancamento } from '@/lib/projetos/tipos'
@@ -9,6 +10,7 @@ export function lerLancamentosCotacao(
   cotacao: CotacaoLida,
 ): { ok: true; lancamentos: Record<string, Lancamento> } | { ok: false; erro: string } {
   const servicos = new Set(cotacao.maoDeObra.map((item) => item.codigo))
+  const opcoes = opcoesStatus(cotacao.legenda)
   const lancamentos: Record<string, Lancamento> = {}
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
     const valor = String(formData.get(`valor:${item.codigo}`) ?? '').trim()
@@ -19,7 +21,19 @@ export function lerLancamentosCotacao(
     if (observacao.length > 2000) {
       return { ok: false, erro: `A observação de ${item.codigo} passa de 2000 caracteres.` }
     }
-    const lancamento: Lancamento = { quantidade: '', material: '', maoDeObra: '', valor, observacao }
+    const escolhido = String(formData.get(`status:${item.codigo}`) ?? '').trim()
+    const canonico = canonizarStatus(escolhido, opcoes)
+    if (escolhido && !canonico && chaveStatus(escolhido) !== chaveStatus(item.status)) {
+      return { ok: false, erro: `O status de ${item.codigo} não está na legenda.` }
+    }
+    const lancamento: Lancamento = {
+      quantidade: '',
+      material: '',
+      maoDeObra: '',
+      valor,
+      observacao,
+      status: canonico || item.status,
+    }
     if (servicos.has(item.codigo)) {
       const extras = lerExtras(String(formData.get(`extras:${item.codigo}`) ?? ''))
       if (!extras.ok) {

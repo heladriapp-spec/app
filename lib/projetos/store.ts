@@ -1,4 +1,5 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
+import { canonizarStatus, opcoesStatus } from '@/lib/planilha/status'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
 import type { ExtraServico, Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
 import {
@@ -253,17 +254,30 @@ export async function planilhaDoProjeto(projeto: Projeto) {
 }
 
 export function valoresDaCotacao(projeto: Projeto, cotacao: CotacaoLida) {
-  const iniciais: Record<string, { valor: string; observacao: string; valorBase: string; extras: ExtraServico[] }> = {}
+  const opcoes = opcoesStatus(cotacao.legenda)
+  const iniciais: Record<
+    string,
+    { valor: string; observacao: string; valorBase: string; extras: ExtraServico[]; status: string }
+  > = {}
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
     const salvo = projeto.lancamentos[item.codigo]
+    const bruto = salvo?.status?.trim() || item.status
+    const status = canonizarStatus(bruto, opcoes) || bruto
     iniciais[item.codigo] = salvo
       ? {
           valor: salvo.valor ?? '',
           observacao: salvo.observacao ?? '',
           valorBase: salvo.valorBase ?? '',
           extras: salvo.extras ?? [],
+          status,
         }
-      : { valor: item.valor, observacao: item.observacao, valorBase: '', extras: [] }
+      : {
+          valor: item.valor,
+          observacao: item.observacao,
+          valorBase: '',
+          extras: [],
+          status,
+        }
   }
   return iniciais
 }

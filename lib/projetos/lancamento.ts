@@ -15,6 +15,7 @@ export function lancamentosIguais(
     if (texto(antes.valor) !== texto(depois.valor)) return false
     if (texto(antes.observacao) !== texto(depois.observacao)) return false
     if (texto(antes.valorBase) !== texto(depois.valorBase)) return false
+    if (texto(antes.status) !== texto(depois.status)) return false
     if (extrasTexto(antes.extras) !== extrasTexto(depois.extras)) return false
   }
   return true

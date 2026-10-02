@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.7.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. A publicação no ar segue em 0.6.0 até o próximo deploy. Excluir linha e o histórico de versões continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.7.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. A publicação no ar segue em 0.6.0 até o próximo deploy. Excluir linha e o histórico de versões continuam na fila, junto com a resposta na tela (seção 6.9): boas-vindas, aviso de processamento, saída por Alt+Esc e erro inesperado. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -67,7 +67,7 @@ O `adm` aprova os demais e entra direto no portal administrativo. O `convidado` 
 
 1. Na página de entrada há login e senha. Quem não tem conta pede acesso com nome, e-mail e celular. Quem esqueceu a senha pede a recuperação nesse mesmo lugar.
 2. O pedido fica só para o administrador, no portal administrativo. Ele aprova ou rejeita. Se aprovar, o e-mail informado recebe um pedido para confirmar o acesso e definir usuário e senha. Só então a pessoa entra.
-3. Depois de entrar, a pessoa vê os projetos em que atua. Pode haver vários. O administrador tem o botão **Criar novo projeto**. O usuário comum só abre projeto em que já foi incluído.
+3. Depois de entrar, a pessoa vê um recado curto de boas-vindas, com o próprio nome (seção 6.9). Ele some sozinho ou ao fechar. Em seguida ela vê os projetos em que atua. Pode haver vários. O administrador tem o botão **Criar novo projeto**. O usuário comum só abre projeto em que já foi incluído.
 4. Criar novo projeto pede o nome, digitado na hora, e a data. A data pode ser informada ou preenchida com a data de hoje. Em seguida há a opção de carregar a planilha do SESC. Sem esse arquivo, a tela de preenchimento não abre.
 5. Com a planilha carregada, o sistema lê aquele arquivo e monta a tela web de preenchimento: abas, blocos e itens. Descrição e unidade ficam só para leitura. Quantidade e valor ficam para preencher. Ninguém redigita a grade.
 6. O administrador inclui as pessoas que vão atuar naquele projeto.
@@ -103,7 +103,7 @@ Conta confirmada entra como usuário comum. Mudar o papel para administrador é 
 
 Esqueci a senha: a pessoa informa o e-mail da conta. O sistema envia um e-mail com link de uso único para ela definir uma senha nova. A senha atual não é enviada e não fica guardada de forma que alguém possa lê-la de volta. Link expirado ou já usado não troca a senha. Conta sem e-mail, como `adm` e `convidado`, não usa esse caminho.
 
-Encerrar sessão encerra o acesso até um novo login.
+Encerrar sessão encerra o acesso até um novo login. O botão **Sair** e o atalho Alt+Esc fazem o mesmo caminho, com o aviso da seção 6.9.
 
 A tela depois do login muda com o papel. Usuário comum não vê criar projeto nem o portal administrativo.
 
@@ -220,6 +220,22 @@ Cada extra aplicado aparece compacto na linha, com lixeira. A lixeira tira só a
 Um ponto discreto ao lado do **+** indica que o item tem extra. O campo de valor, nesse caso, mostra o final e não se edita por cima: a edição do base volta quando os extras saem.
 
 Na planilha exportada, a célula original do valor do serviço recebe somente esse final. Exemplo: base `R$ 100,00`, extras `R$ 20,00` e `10%`, célula com `R$ 130,00`. Não há outra célula, nem texto, explicando a conta.
+
+### 6.9 Resposta na tela
+
+Quatro respostas para a pessoa não ficar sem saber o que a aplicação fez. Nenhuma delas está construída. Entram na fila para programar, na ordem abaixo.
+
+**Boas-vindas.** Logo depois do login, antes da lista de projetos, aparece um recado com o nome da conta (`usuario.nome`). Texto curto, este:
+
+> Bem-vindo, {nome}. Com o Heladri você deixa a planilha manual de lado e preenche o trabalho do SESC aqui. O arquivo sai pronto.
+
+O recado fecha sozinho em cinco segundos. Também fecha no botão **Fechar**. Há a opção **Não mostrar de novo**. Se a pessoa marcar, a preferência fica na conta dela e o recado não volta nos próximos acessos. Sem a marca, o recado aparece de novo em cada login. Conta nova, ou conta que ainda não marcou, vê o recado.
+
+**Processando e concluído.** Toda ação disparada por botão — entrar, salvar, criar, aprovar, rejeitar, excluir, concluir, baixar — mostra um aviso por cima da tela enquanto espera. O aviso tem um relógio girando e a palavra **Processando**. Quando a ação termina bem, o mesmo aviso troca para **Ação concluída** e some. Cadastro, exclusão e o restante usam essa mesma frase. A pessoa não precisa adivinhar se o clique pegou.
+
+**Sair.** Alt+Esc, em qualquer tela já autenticada, encerra a sessão. Enquanto sai, o aviso diz **Encerrando sessão**. Ao terminar, **Sessão encerrada**, e a pessoa volta à página de entrada. O botão **Sair** usa o mesmo aviso. Sem sessão, o atalho não faz nada.
+
+**Erro inesperado.** Falha que a tela não previu — página que quebrou, ação que não devolveu o resultado — aparece como erro, com o texto **Erro inesperado. Consulte o administrador.** O detalhe técnico (pilha, código interno) não vai para a pessoa. Recusa já prevista continua específica: senha incorreta, campo vazio, papel sem permissão, link vencido. Essas não viram a frase genérica.
 
 ## 7. Fidelidade do arquivo
 
@@ -400,8 +416,12 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 
 ### Ainda na fila
 
-1. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
-2. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. Boas-vindas com o nome de quem entrou, fechando em cinco segundos ou em **Fechar**, com **Não mostrar de novo** (seção 6.9).
+2. Aviso de **Processando** e de **Ação concluída** em todo botão que dispara uma ação (seção 6.9).
+3. Alt+Esc e o botão **Sair** com **Encerrando sessão** e **Sessão encerrada** (seção 6.9).
+4. **Erro inesperado. Consulte o administrador.** no lugar da falha crua. Recusa já prevista continua com o texto dela (seção 6.9).
+5. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
+6. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 
