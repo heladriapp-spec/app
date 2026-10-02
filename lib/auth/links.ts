@@ -16,7 +16,7 @@ export type LinkAcesso = {
 
 const PRAZO_MS = 24 * 60 * 60 * 1000
 const RETENCAO_MS = 7 * 24 * 60 * 60 * 1000
-const INTERVALO_SENHA_MS = 2 * 60 * 1000
+export const INTERVALO_SENHA_MS = 2 * 60 * 1000
 
 export function hashDoToken(token: string) {
   return createHash('sha256').update(token).digest('hex')
@@ -26,6 +26,25 @@ export function tokenInformado(bruto: string) {
   const token = bruto.trim()
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null
   return token
+}
+
+export function criarLink(
+  entrada: { tipo: TipoLink; email: string; pedidoId: string | null; usuarioId: string | null },
+  agora = Date.now(),
+) {
+  const token = randomBytes(32).toString('base64url')
+  const link: LinkAcesso = {
+    id: crypto.randomUUID(),
+    tipo: entrada.tipo,
+    email: entrada.email,
+    pedidoId: entrada.pedidoId,
+    usuarioId: entrada.usuarioId,
+    tokenHash: hashDoToken(token),
+    criadoEm: new Date(agora).toISOString(),
+    expiraEm: new Date(agora + PRAZO_MS).toISOString(),
+    usadoEm: null,
+  }
+  return { token, link }
 }
 
 export function emitirLink(
@@ -44,18 +63,8 @@ export function emitirLink(
       link.usadoEm = new Date(agora).toISOString()
     }
   }
-  const token = randomBytes(32).toString('base64url')
-  restantes.push({
-    id: crypto.randomUUID(),
-    tipo: entrada.tipo,
-    email: entrada.email,
-    pedidoId: entrada.pedidoId,
-    usuarioId: entrada.usuarioId,
-    tokenHash: hashDoToken(token),
-    criadoEm: new Date(agora).toISOString(),
-    expiraEm: new Date(agora + PRAZO_MS).toISOString(),
-    usadoEm: null,
-  })
+  const { token, link } = criarLink(entrada, agora)
+  restantes.push(link)
   links.splice(0, links.length, ...restantes)
   return token
 }

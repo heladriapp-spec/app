@@ -2,11 +2,17 @@
 
 import { requireAdmin } from '@/lib/auth/guard'
 import { validarLogin, validarSenha } from '@/lib/auth/credencial'
-import { emitirLink } from '@/lib/auth/links'
-import { hashSenha } from '@/lib/auth/senha'
 import { enviarConfirmacao } from '@/lib/email/mensagem'
-import { alterarStore, registrarNo, type Papel } from '@/lib/operacao/store'
-import { alterarProjetos } from '@/lib/projetos/store'
+import {
+  atualizarConta,
+  criarConta,
+  decidirPedidoOperacao,
+  excluirConta,
+  reenviarConvite,
+  registrarEvento,
+  trocarSenhaDaConta,
+  type Papel,
+} from '@/lib/operacao/store'
 import { redirect, unstable_rethrow } from 'next/navigation'
 
 function voltar(texto: string, ok = false): never {
@@ -20,17 +26,15 @@ function avisoGravacao(erro: unknown) {
 }
 
 async function registrarFalha(ator: string, email: string, motivo: 'sem_remetente' | 'falha') {
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'alerta',
-      evento: 'EMAIL_FAILED',
-      ator,
-      mensagem:
-        motivo === 'sem_remetente'
-          ? `O e-mail para ${email} não saiu: o remetente não está configurado.`
-          : `O e-mail para ${email} não saiu.`,
-      detalhe: { email },
-    })
+  await registrarEvento({
+    nivel: 'alerta',
+    evento: 'EMAIL_FAILED',
+    ator,
+    mensagem:
+      motivo === 'sem_remetente'
+        ? `O e-mail para ${email} não saiu: o remetente não está configurado.`
+        : `O e-mail para ${email} não saiu.`,
+    detalhe: { email },
   })
 }
 
@@ -42,43 +46,11 @@ export async function decidirPedido(formData: FormData) {
 
   const convite = { email: '', nome: '', token: '' }
   try {
-    const erro = await alterarStore((store) => {
-      const pedido = store.pedidos.find((item) => item.id === id)
-      if (!pedido || pedido.situacao !== 'pendente') return 'Pedido não está pendente.'
-      if (
-        acao === 'aprovar' &&
-        store.usuarios.some(
-          (item) => item.email != null && item.email.toLowerCase() === pedido.email,
-        )
-      ) {
-        return 'Este e-mail já tem conta.'
-      }
-      pedido.situacao = acao === 'aprovar' ? 'aprovado' : 'rejeitado'
-      pedido.decididoEm = new Date().toISOString()
-      pedido.decididoPor = admin.login
-      if (acao === 'aprovar') {
-        convite.email = pedido.email
-        convite.nome = pedido.nome
-        convite.token = emitirLink(store.links, {
-          tipo: 'confirmacao',
-          email: pedido.email,
-          pedidoId: pedido.id,
-          usuarioId: null,
-        })
-      }
-      registrarNo(store, {
-        nivel: 'info',
-        evento: acao === 'aprovar' ? 'USER_APPROVED' : 'USER_REJECTED',
-        ator: admin.login,
-        mensagem:
-          acao === 'aprovar'
-            ? `${admin.login} aprovou o pedido de ${pedido.nome}. O link de confirmação segue para o e-mail.`
-            : `${admin.login} rejeitou o pedido de ${pedido.nome}.`,
-        detalhe: { email: pedido.email },
-      })
-      return null
-    })
-    if (erro) voltar(erro)
+    const resultado = await decidirPedidoOperacao(id, acao, admin.login)
+    if (resultado.erro) voltar(resultado.erro)
+    convite.email = resultado.email
+    convite.nome = resultado.nome
+    convite.token = resultado.token
   } catch (error) {
     unstable_rethrow(error)
     voltar(avisoGravacao(error))
@@ -104,31 +76,11 @@ export async function reenviarNotificacao(formData: FormData) {
 
   const convite = { email: '', nome: '', token: '' }
   try {
-    const erro = await alterarStore((store) => {
-      const pedido = store.pedidos.find((item) => item.id === id)
-      if (!pedido || pedido.situacao !== 'aprovado') return 'Só dá para reenviar um pedido aprovado.'
-      const usuario = store.usuarios.find(
-        (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
-      )
-      if (usuario) return 'A conta deste e-mail já existe. O reenvio não cria outra.'
-      convite.email = pedido.email
-      convite.nome = pedido.nome
-      convite.token = emitirLink(store.links, {
-        tipo: 'confirmacao',
-        email: pedido.email,
-        pedidoId: pedido.id,
-        usuarioId: null,
-      })
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_NOTIFY_RESEND',
-        ator: admin.login,
-        mensagem: `${admin.login} reenviou a confirmação para ${pedido.email}.`,
-        detalhe: { email: pedido.email },
-      })
-      return null
-    })
-    if (erro) voltar(erro)
+    const resultado = await reenviarConvite(id, admin.login)
+    if (resultado.erro) voltar(resultado.erro)
+    convite.email = resultado.email
+    convite.nome = resultado.nome
+    convite.token = resultado.token
   } catch (error) {
     unstable_rethrow(error)
     voltar(avisoGravacao(error))
@@ -155,29 +107,7 @@ export async function configurarUsuario(formData: FormData) {
   if (nome.length < 2) voltar('O nome precisa de ao menos 2 caracteres.')
   if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
 
-  const erro = await alterarStore((store) => {
-    const usuario = store.usuarios.find((item) => item.id === id)
-    if (!usuario) return 'Usuário não encontrado.'
-    const adminsDepois = store.usuarios.filter((item) => {
-      if (item.id !== id) return item.papel === 'administrador' && item.ativo
-      return papel === 'administrador' && ativo
-    })
-    if (adminsDepois.length === 0) {
-      return 'O único administrador ativo não pode ser desativado nem rebaixado.'
-    }
-    usuario.nome = nome
-    usuario.celular = celular || null
-    usuario.papel = papel
-    usuario.ativo = ativo
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_UPDATED',
-      ator: admin.login,
-      mensagem: `${admin.login} alterou ${usuario.login}.`,
-      detalhe: { papel, ativo },
-    })
-    return null
-  })
+  const erro = await atualizarConta(id, { nome, celular: celular || null, papel, ativo }, admin.login)
 
   if (erro) voltar(erro)
   voltar('Configuração gravada.', true)
@@ -210,38 +140,10 @@ export async function criarUsuario(formData: FormData) {
   const email = emailBruto || null
   if (email && !email.includes('@')) voltar('Informe um e-mail válido ou deixe em branco.')
 
-  const erro = await alterarStore(async (store) => {
-    if (store.usuarios.some((item) => item.login === login)) {
-      return 'Este usuário já existe.'
-    }
-    if (
-      email &&
-      (store.usuarios.some((item) => item.email === email) ||
-        store.pedidos.some((item) => item.email === email && item.situacao === 'pendente'))
-    ) {
-      return 'Este e-mail já está em uma conta ou em um pedido pendente.'
-    }
-    store.usuarios.push({
-      id: crypto.randomUUID(),
-      nome,
-      email,
-      celular: celular || null,
-      login,
-      senhaHash: await hashSenha(senha),
-      papel,
-      ativo: true,
-      origem: 'pedido',
-      ocultarBoasVindas: false,
-    })
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_CREATED',
-      ator: admin.login,
-      mensagem: `${admin.login} criou a conta ${login}.`,
-      detalhe: { login, papel },
-    })
-    return null
-  })
+  const erro = await criarConta(
+    { nome, email, celular: celular || null, login, senha, papel },
+    admin.login,
+  )
 
   if (erro) voltar(erro)
   voltar(`Conta ${login} criada. A pessoa já pode entrar.`, true)
@@ -253,19 +155,7 @@ export async function alterarSenha(formData: FormData) {
   const senha = senhaInformada(formData)
 
   try {
-    const erro = await alterarStore(async (store) => {
-      const usuario = store.usuarios.find((item) => item.id === id)
-      if (!usuario) return 'Usuário não encontrado.'
-      usuario.senhaHash = await hashSenha(senha)
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_PASSWORD_CHANGED',
-        ator: admin.login,
-        mensagem: `${admin.login} definiu uma senha nova para ${usuario.login}.`,
-        detalhe: { login: usuario.login },
-      })
-      return null
-    })
+    const erro = await trocarSenhaDaConta(id, senha, admin.login)
     if (erro) voltar(erro)
   } catch (error) {
     unstable_rethrow(error)
@@ -279,33 +169,7 @@ export async function excluirUsuario(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   if (id === admin.id) voltar('Você não pode excluir a conta com a qual está entrado.')
 
-  let login = ''
-  const erro = await alterarStore((store) => {
-    const usuario = store.usuarios.find((item) => item.id === id)
-    if (!usuario) return 'Usuário não encontrado.'
-    const adminsDepois = store.usuarios.filter(
-      (item) => item.id !== id && item.papel === 'administrador' && item.ativo,
-    )
-    if (adminsDepois.length === 0) {
-      return 'O único administrador ativo não pode ser excluído.'
-    }
-    login = usuario.login
-    store.usuarios = store.usuarios.filter((item) => item.id !== id)
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_DELETED',
-      ator: admin.login,
-      mensagem: `${admin.login} excluiu a conta ${login}.`,
-      detalhe: { login },
-    })
-    return null
-  })
-
-  if (erro) voltar(erro)
-  await alterarProjetos((projetos) => {
-    for (const projeto of projetos) {
-      projeto.participantes = projeto.participantes.filter((item) => item !== id)
-    }
-  })
-  voltar(`Conta ${login} excluída.`, true)
+  const resultado = await excluirConta(id, admin.login)
+  if (resultado.erro) voltar(resultado.erro)
+  voltar(`Conta ${resultado.login} excluída.`, true)
 }

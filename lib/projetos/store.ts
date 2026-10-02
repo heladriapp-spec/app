@@ -117,6 +117,17 @@ async function gravarIndice(projetos: Projeto[]) {
   await writeFile(INDICE, JSON.stringify({ projetos }, null, 2), { mode: 0o600 })
 }
 
+/** Só o JSON local. No Supabase, a exclusão do usuário cai na cascata já existente. */
+export async function tirarParticipanteLocal(usuarioId: string) {
+  if (supabaseConfigurado()) return
+  if (!/^[\w-]+$/.test(usuarioId)) return
+  await alterarProjetos((projetos) => {
+    for (const projeto of projetos) {
+      projeto.participantes = projeto.participantes.filter((item) => item !== usuarioId)
+    }
+  })
+}
+
 export async function alterarProjetos<T>(fn: (projetos: Projeto[]) => T | Promise<T>): Promise<T> {
   const exec = fila.then(async () => {
     const projetos = await lerIndice()

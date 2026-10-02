@@ -11,6 +11,64 @@ export async function lerTabela<T>(tabela: string, busca = 'select=*'): Promise<
   return (await resposta.json()) as T[]
 }
 
+export async function inserirLinha<T>(tabela: string, linha: unknown, select = 'id'): Promise<T> {
+  if (!/^[\w,]+$/.test(select)) throw new Error('Colunas inválidas ao inserir no Supabase.')
+  const resposta = await pedir(
+    'POST',
+    `/rest/v1/${tabela}?select=${select}`,
+    linha,
+    'return=representation',
+    'application/json',
+    undefined,
+    true,
+  )
+  const texto = await resposta.text()
+  const linhas = texto ? (JSON.parse(texto) as T[]) : []
+  const primeira = linhas[0]
+  if (!primeira) throw new Error('O Supabase não devolveu a linha inserida.')
+  return primeira
+}
+
+export async function atualizarOnde<T>(tabela: string, filtro: string, corpo: Record<string, unknown>): Promise<T[]> {
+  if (!filtro) throw new Error('Filtro inválido ao atualizar no Supabase.')
+  const resposta = await pedir(
+    'PATCH',
+    `/rest/v1/${tabela}?${filtro}`,
+    corpo,
+    'return=representation',
+    'application/json',
+    undefined,
+    true,
+  )
+  const texto = await resposta.text()
+  if (!texto) return []
+  return JSON.parse(texto) as T[]
+}
+
+export async function apagarOnde<T>(tabela: string, filtro: string): Promise<T[]> {
+  if (!filtro) throw new Error('Filtro inválido ao apagar no Supabase.')
+  const resposta = await pedir(
+    'DELETE',
+    `/rest/v1/${tabela}?${filtro}`,
+    undefined,
+    'return=representation',
+    undefined,
+    undefined,
+    true,
+  )
+  const texto = await resposta.text()
+  if (!texto) return []
+  return JSON.parse(texto) as T[]
+}
+
+export function restricaoUnica(erro: unknown) {
+  if (codigoDe(erro) !== '23505') return null
+  if (!erro || typeof erro !== 'object' || !('restricao' in erro)) return null
+  const restricao = (erro as { restricao?: unknown }).restricao
+  if (typeof restricao !== 'string' || !/^[\w]+$/.test(restricao)) return null
+  return restricao
+}
+
 export async function gravarTabela(tabela: string, linhas: unknown[]) {
   if (linhas.length === 0) return
   let atual = linhas.map((linha) => ({ ...(linha as Record<string, unknown>) }))
@@ -222,12 +280,15 @@ async function falha(resposta: Response) {
     detalhe = texto.replace(/\s+/g, ' ').trim().slice(0, 180)
   }
   const coluna = nomeDaColuna(detalhe)
+  const restricao = /unique constraint "([\w]+)"/.exec(detalhe)?.[1] ?? ''
   const erro = new Error(mensagemSupabase(resposta.status, codigo, coluna, detalhe)) as Error & {
     codigo?: string
     coluna?: string
+    restricao?: string
   }
   if (codigo) erro.codigo = codigo
   if (coluna) erro.coluna = coluna
+  if (restricao) erro.restricao = restricao
   return erro
 }
 

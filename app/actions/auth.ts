@@ -9,15 +9,18 @@ import {
   usuarioDaSessao,
 } from '@/lib/auth/guard'
 import { ipDoCabecalho, limparFalhasDeLogin, loginBloqueado, registrarFalhaDeLogin } from '@/lib/auth/limite'
-import { acharLink, emitirLink, linkRecente, motivoDoLink, tokenInformado } from '@/lib/auth/links'
-import { confereSenha, consumirTempoDeSenha, hashSenha } from '@/lib/auth/senha'
+import { tokenInformado } from '@/lib/auth/links'
+import { confereSenha, consumirTempoDeSenha } from '@/lib/auth/senha'
 import { enviarRecuperacao } from '@/lib/email/mensagem'
 import { remetenteConfigurado } from '@/lib/email/smtp'
 import {
-  alterarStore,
   buscarUsuarioParaLogin,
+  confirmarConta,
+  ocultarBoasVindasDaConta,
+  prepararRecuperacao,
   registrarEvento,
-  registrarNo,
+  registrarPedido,
+  trocarSenhaPeloLink,
   type UsuarioLogin,
 } from '@/lib/operacao/store'
 import { headers } from 'next/headers'
@@ -127,30 +130,7 @@ export async function pedirAcesso(formData: FormData) {
     )
   }
 
-  const erro = await alterarStore((store) => {
-    const emailEmUso =
-      store.usuarios.some((item) => item.email === email) ||
-      store.pedidos.some((item) => item.email === email && item.situacao === 'pendente')
-    if (emailEmUso) return 'Este e-mail já está em uma conta ou em um pedido pendente.'
-    store.pedidos.push({
-      id: crypto.randomUUID(),
-      nome,
-      email,
-      celular,
-      criadoEm: new Date().toISOString(),
-      situacao: 'pendente',
-      decididoEm: null,
-      decididoPor: null,
-    })
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'USER_SIGNUP_REQUESTED',
-      ator: null,
-      mensagem: `${nome} pediu acesso.`,
-      detalhe: { email },
-    })
-    return null
-  })
+  const erro = await registrarPedido({ nome, email, celular })
 
   if (erro) redirect(`/pedir-acesso?erro=${encodeURIComponent(erro)}`)
   redirect('/pedir-acesso?ok=1')
@@ -169,23 +149,7 @@ export async function esqueciSenha(formData: FormData) {
 
   let token = ''
   try {
-    await alterarStore((store) => {
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'PASSWORD_RECOVERY_REQUESTED',
-        ator: null,
-        mensagem: 'Alguém pediu recuperação de senha.',
-        detalhe: { email },
-      })
-      const usuario = store.usuarios.find((item) => item.email === email && item.ativo)
-      if (!usuario || linkRecente(store.links, 'senha', email)) return
-      token = emitirLink(store.links, {
-        tipo: 'senha',
-        email,
-        pedidoId: null,
-        usuarioId: usuario.id,
-      })
-    })
+    token = await prepararRecuperacao(email)
   } catch (error) {
     unstable_rethrow(error)
     redirect('/esqueci-senha?ok=1')
@@ -194,14 +158,12 @@ export async function esqueciSenha(formData: FormData) {
   if (token) {
     const envio = await enviarRecuperacao(email, token)
     if (!envio.ok) {
-      await alterarStore((store) => {
-        registrarNo(store, {
-          nivel: 'alerta',
-          evento: 'EMAIL_FAILED',
-          ator: null,
-          mensagem: `O e-mail de senha para ${email} não saiu.`,
-          detalhe: { email },
-        })
+      await registrarEvento({
+        nivel: 'alerta',
+        evento: 'EMAIL_FAILED',
+        ator: null,
+        mensagem: `O e-mail de senha para ${email} não saiu.`,
+        detalhe: { email },
       })
     }
   }
@@ -220,45 +182,9 @@ export async function confirmarAcesso(formData: FormData) {
 
   let usuarioId = ''
   try {
-    const erro = await alterarStore(async (store) => {
-      const link = acharLink(store.links, token)
-      const motivo = motivoDoLink(link, 'confirmacao')
-      if (motivo || !link) return motivo ?? 'Este link não vale.'
-      const pedido = store.pedidos.find((item) => item.id === link.pedidoId)
-      if (!pedido || pedido.situacao !== 'aprovado') return 'Este pedido não está aprovado.'
-      if (store.usuarios.some((item) => item.login === login.login)) return 'Este usuário já existe.'
-      if (store.usuarios.some((item) => item.email === link.email)) return 'Este e-mail já tem conta.'
-      usuarioId = crypto.randomUUID()
-      store.usuarios.push({
-        id: usuarioId,
-        nome: pedido.nome,
-        email: link.email,
-        celular: pedido.celular,
-        login: login.login,
-        senhaHash: await hashSenha(senha),
-        papel: 'comum',
-        ativo: true,
-        origem: 'pedido',
-        ocultarBoasVindas: false,
-      })
-      link.usadoEm = new Date().toISOString()
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_CONFIRMED',
-        ator: login.login,
-        mensagem: `${login.login} confirmou o acesso.`,
-        detalhe: { email: link.email },
-      })
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_LOGIN',
-        ator: login.login,
-        mensagem: `${login.login} entrou.`,
-        detalhe: { papel: 'comum' },
-      })
-      return null
-    })
-    if (erro) redirect(`${destino}?erro=${encodeURIComponent(erro)}`)
+    const resultado = await confirmarConta({ token, login: login.login, senha })
+    if (resultado.erro) redirect(`${destino}?erro=${encodeURIComponent(resultado.erro)}`)
+    usuarioId = resultado.usuarioId
   } catch (error) {
     unstable_rethrow(error)
     redirect(`${destino}?erro=${encodeURIComponent('Não foi possível confirmar agora. Tente de novo.')}`)
@@ -272,12 +198,7 @@ export async function confirmarAcesso(formData: FormData) {
 export async function dispensarBoasVindas(formData: FormData) {
   const usuario = await usuarioDaSessao()
   const ocultar = formData.get('ocultar') === '1'
-  if (usuario && ocultar) {
-    await alterarStore((store) => {
-      const atual = store.usuarios.find((item) => item.id === usuario.id)
-      if (atual) atual.ocultarBoasVindas = true
-    })
-  }
+  if (usuario && ocultar) await ocultarBoasVindasDaConta(usuario.id)
   await limparRecadoDeEntrada()
 }
 
@@ -290,23 +211,7 @@ export async function definirSenhaNova(formData: FormData) {
   if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
 
   try {
-    const erro = await alterarStore(async (store) => {
-      const link = acharLink(store.links, token)
-      const motivo = motivoDoLink(link, 'senha')
-      if (motivo || !link) return motivo ?? 'Este link não vale.'
-      const usuario = store.usuarios.find((item) => item.id === link.usuarioId && item.email === link.email)
-      if (!usuario || !usuario.ativo) return 'Esta conta não pode trocar a senha por este link.'
-      usuario.senhaHash = await hashSenha(senha)
-      link.usadoEm = new Date().toISOString()
-      registrarNo(store, {
-        nivel: 'info',
-        evento: 'USER_PASSWORD_CHANGED',
-        ator: usuario.login,
-        mensagem: `${usuario.login} definiu uma senha nova pelo link.`,
-        detalhe: { login: usuario.login },
-      })
-      return null
-    })
+    const erro = await trocarSenhaPeloLink(token, senha)
     if (erro) redirect(`${destino}?erro=${encodeURIComponent(erro)}`)
   } catch (error) {
     unstable_rethrow(error)

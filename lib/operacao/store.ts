@@ -1,14 +1,30 @@
-import { acharLink, hashDoToken, tokenInformado, type LinkAcesso, type TipoLink } from '@/lib/auth/links'
+import {
+  acharLink,
+  criarLink,
+  emitirLink,
+  hashDoToken,
+  INTERVALO_SENHA_MS,
+  linkRecente,
+  motivoDoLink,
+  tokenInformado,
+  type LinkAcesso,
+  type TipoLink,
+} from '@/lib/auth/links'
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { hashSenha } from '@/lib/auth/senha'
 import { cache } from 'react'
+import { tirarParticipanteLocal } from '@/lib/projetos/store'
 import {
   apagarFora,
+  apagarOnde,
+  atualizarOnde,
   chamarFuncao,
   colunaQueFalta,
   ehTabelaAusente,
   gravarTabela,
+  inserirLinha,
   lerTabela,
+  restricaoUnica,
   supabaseConfigurado,
 } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -255,6 +271,16 @@ export async function registrarEvento(entrada: EntradaLog): Promise<void> {
       `[auditoria] falha ao gravar ${evento}${codigo ? ` (${codigo})` : ''}: ${textoDiagnostico(erro)}`,
     )
   }
+}
+
+async function alterarLocal<T>(fn: (store: Store) => T | Promise<T>): Promise<T> {
+  return enfileirar(async () => {
+    const disco = await lerDisco()
+    const store = disco ? completar(disco) : await semear()
+    const resultado = await fn(store)
+    await gravarDisco(store)
+    return resultado
+  })
 }
 
 export async function alterarStore<T>(fn: (store: Store) => T | Promise<T>): Promise<T> {
@@ -735,4 +761,766 @@ async function gravarLinks(links: LinkAcesso[]) {
     if (ehTabelaAusente(erro) && links.length === 0) return
     throw erro
   }
+}
+
+const EMAIL_EM_USO = 'Este e-mail já está em uma conta ou em um pedido pendente.'
+const LOGIN_EM_USO = 'Este usuário já existe.'
+const EMAIL_TEM_CONTA = 'Este e-mail já tem conta.'
+const PEDIDO_NAO_PENDENTE = 'Pedido não está pendente.'
+
+function filtro(coluna: string, operador: 'eq' | 'gte' | 'ilike', valor: string) {
+  if (!/^[a-z_]+$/.test(coluna)) throw new Error('Coluna inválida ao consultar o Supabase.')
+  return `${coluna}=${operador}.${encodeURIComponent(valor)}`
+}
+
+function traduzirUnico(erro: unknown, frases: Record<string, string>) {
+  const restricao = restricaoUnica(erro)
+  if (!restricao) throw erro
+  const frase = frases[restricao]
+  if (!frase) throw erro
+  return frase
+}
+
+async function existeLogin(login: string) {
+  const lista = await lerUsuariosPublicos(`${filtro('login', 'eq', login)}&limit=1`)
+  return lista.length > 0
+}
+
+async function existeEmailExato(email: string) {
+  const lista = await lerUsuariosPublicos(`${filtro('email', 'eq', email)}&limit=1`)
+  return lista.length > 0
+}
+
+function escaparLike(valor: string) {
+  return valor.replace(/[\\%_]/g, (caractere) => `\\${caractere}`)
+}
+
+async function existeEmailNaConta(email: string, ignorarCaixa: boolean) {
+  const lista = await lerUsuariosPublicos(`${filtro('email', 'ilike', escaparLike(email))}&limit=20`)
+  return lista.some((item) => {
+    if (item.email == null) return false
+    if (ignorarCaixa) return item.email.toLowerCase() === email.toLowerCase()
+    return item.email.toLowerCase() === email
+  })
+}
+
+async function existePedidoPendente(email: string) {
+  const linhas = await lerTabela<{ id: string }>(
+    'pedidos_acesso',
+    `select=id&${filtro('email', 'eq', email)}&situacao=eq.pendente&limit=1`,
+  )
+  return linhas.length > 0
+}
+
+async function idsAdministradoresAtivos() {
+  const linhas = await lerTabela<{ id: string }>('usuarios', 'select=id&papel=eq.administrador&ativo=eq.true')
+  return linhas.map((item) => item.id)
+}
+
+function sobraAdministrador(
+  ids: string[],
+  id: string,
+  papel: Papel,
+  ativo: boolean,
+  removendo = false,
+) {
+  const era = ids.includes(id)
+  const sera = !removendo && papel === 'administrador' && ativo
+  return ids.length - (era ? 1 : 0) + (sera ? 1 : 0) > 0
+}
+
+async function inserirUsuarioNuvem(linha: Record<string, unknown>) {
+  try {
+    await inserirLinha<{ id: string }>('usuarios', linha, 'id')
+  } catch (erro) {
+    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
+    if (linha.ocultar_boas_vindas === true) throw erro
+    const { ocultar_boas_vindas: _ocultar, ...resto } = linha
+    await inserirLinha<{ id: string }>('usuarios', resto, 'id')
+  }
+}
+
+async function emitirNaNuvem(entrada: {
+  tipo: TipoLink
+  email: string
+  pedidoId: string | null
+  usuarioId: string | null
+}) {
+  const agora = Date.now()
+  await atualizarOnde<{ id: string }>(
+    'links_acesso',
+    `${filtro('tipo', 'eq', entrada.tipo)}&${filtro('email', 'eq', entrada.email)}&usado_em=is.null&select=id`,
+    { usado_em: new Date(agora).toISOString() },
+  )
+  const { token, link } = criarLink(entrada, agora)
+  await inserirLinha<{ id: string }>(
+    'links_acesso',
+    {
+      id: link.id,
+      tipo: link.tipo,
+      email: link.email,
+      pedido_id: link.pedidoId,
+      usuario_id: link.usuarioId,
+      token_hash: link.tokenHash,
+      criado_em: link.criadoEm,
+      expira_em: link.expiraEm,
+      usado_em: null,
+    },
+    'id',
+  )
+  return token
+}
+
+async function marcarLinkNaNuvem(id: string) {
+  const linhas = await atualizarOnde<{ id: string }>(
+    'links_acesso',
+    `${filtro('id', 'eq', id)}&usado_em=is.null&select=id`,
+    { usado_em: new Date().toISOString() },
+  )
+  return linhas.length > 0
+}
+
+async function linkSenhaRecente(email: string) {
+  const desde = new Date(Date.now() - INTERVALO_SENHA_MS).toISOString()
+  const linhas = await lerTabela<{ id: string }>(
+    'links_acesso',
+    `select=id&tipo=eq.senha&${filtro('email', 'eq', email)}&usado_em=is.null&${filtro('criado_em', 'gte', desde)}&limit=1`,
+  )
+  return linhas.length > 0
+}
+
+export async function criarConta(
+  entrada: {
+    nome: string
+    email: string | null
+    celular: string | null
+    login: string
+    senha: string
+    papel: Papel
+  },
+  ator: string,
+) {
+  const senhaHash = await hashSenha(entrada.senha)
+  const erro = supabaseConfigurado()
+    ? await criarContaNuvem(entrada, senhaHash)
+    : await alterarLocal((store) => criarContaLocal(store, entrada, senhaHash))
+  if (erro) return erro
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_CREATED',
+    ator,
+    mensagem: `${ator} criou a conta ${entrada.login}.`,
+    detalhe: { login: entrada.login, papel: entrada.papel },
+  })
+  return null
+}
+
+function criarContaLocal(
+  store: Store,
+  entrada: { nome: string; email: string | null; celular: string | null; login: string; papel: Papel },
+  senhaHash: string,
+) {
+  if (store.usuarios.some((item) => item.login === entrada.login)) return LOGIN_EM_USO
+  if (
+    entrada.email &&
+    (store.usuarios.some((item) => item.email === entrada.email) ||
+      store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente'))
+  ) {
+    return EMAIL_EM_USO
+  }
+  store.usuarios.push({
+    id: crypto.randomUUID(),
+    nome: entrada.nome,
+    email: entrada.email,
+    celular: entrada.celular,
+    login: entrada.login,
+    senhaHash,
+    papel: entrada.papel,
+    ativo: true,
+    origem: 'pedido',
+    ocultarBoasVindas: false,
+  })
+  return null
+}
+
+async function criarContaNuvem(
+  entrada: { nome: string; email: string | null; celular: string | null; login: string; papel: Papel },
+  senhaHash: string,
+) {
+  if (await existeLogin(entrada.login)) return LOGIN_EM_USO
+  if (entrada.email && ((await existeEmailExato(entrada.email)) || (await existePedidoPendente(entrada.email)))) {
+    return EMAIL_EM_USO
+  }
+  try {
+    await inserirUsuarioNuvem({
+      id: crypto.randomUUID(),
+      nome: entrada.nome,
+      email: entrada.email,
+      celular: entrada.celular,
+      login: entrada.login,
+      senha_hash: senhaHash,
+      papel: entrada.papel,
+      ativo: true,
+      origem: 'pedido',
+      ocultar_boas_vindas: false,
+    })
+  } catch (erro) {
+    return traduzirUnico(erro, {
+      usuarios_login_key: LOGIN_EM_USO,
+      usuarios_email_unico: EMAIL_EM_USO,
+    })
+  }
+  return null
+}
+
+export async function atualizarConta(
+  id: string,
+  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+  ator: string,
+) {
+  if (!idSeguro(id)) return 'Usuário não encontrado.'
+  const resultado = supabaseConfigurado()
+    ? await atualizarContaNuvem(id, entrada)
+    : await alterarLocal((store) => atualizarContaLocal(store, id, entrada))
+  if (resultado.erro) return resultado.erro
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_UPDATED',
+    ator,
+    mensagem: `${ator} alterou ${resultado.login}.`,
+    detalhe: { papel: entrada.papel, ativo: entrada.ativo },
+  })
+  return null
+}
+
+function atualizarContaLocal(
+  store: Store,
+  id: string,
+  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+) {
+  const usuario = store.usuarios.find((item) => item.id === id)
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
+  const ids = store.usuarios.filter((item) => item.papel === 'administrador' && item.ativo).map((item) => item.id)
+  if (!sobraAdministrador(ids, id, entrada.papel, entrada.ativo)) {
+    return { erro: 'O único administrador ativo não pode ser desativado nem rebaixado.', login: '' }
+  }
+  usuario.nome = entrada.nome
+  usuario.celular = entrada.celular
+  usuario.papel = entrada.papel
+  usuario.ativo = entrada.ativo
+  return { erro: null, login: usuario.login }
+}
+
+async function atualizarContaNuvem(
+  id: string,
+  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+) {
+  const usuario = await buscarUsuarioPublicoPorId(id)
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
+  const ids = await idsAdministradoresAtivos()
+  if (!sobraAdministrador(ids, id, entrada.papel, entrada.ativo)) {
+    return { erro: 'O único administrador ativo não pode ser desativado nem rebaixado.', login: '' }
+  }
+  const linhas = await atualizarOnde<{ id: string }>(
+    'usuarios',
+    `${filtro('id', 'eq', id)}&select=id`,
+    {
+      nome: entrada.nome,
+      celular: entrada.celular,
+      papel: entrada.papel,
+      ativo: entrada.ativo,
+    },
+  )
+  if (linhas.length === 0) return { erro: 'Usuário não encontrado.', login: '' }
+  return { erro: null, login: usuario.login }
+}
+
+export async function trocarSenhaDaConta(id: string, senha: string, ator: string) {
+  if (!idSeguro(id)) return 'Usuário não encontrado.'
+  const senhaHash = await hashSenha(senha)
+  const login = supabaseConfigurado()
+    ? await trocarSenhaNuvem(id, senhaHash)
+    : await alterarLocal((store) => trocarSenhaLocal(store, id, senhaHash))
+  if (!login.ok) return login.erro
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_PASSWORD_CHANGED',
+    ator,
+    mensagem: `${ator} definiu uma senha nova para ${login.login}.`,
+    detalhe: { login: login.login },
+  })
+  return null
+}
+
+function trocarSenhaLocal(store: Store, id: string, senhaHash: string) {
+  const usuario = store.usuarios.find((item) => item.id === id)
+  if (!usuario) return { ok: false as const, erro: 'Usuário não encontrado.' }
+  usuario.senhaHash = senhaHash
+  return { ok: true as const, login: usuario.login, erro: null }
+}
+
+async function trocarSenhaNuvem(id: string, senhaHash: string) {
+  const usuario = await buscarUsuarioPublicoPorId(id)
+  if (!usuario) return { ok: false as const, erro: 'Usuário não encontrado.' }
+  const linhas = await atualizarOnde<{ id: string }>('usuarios', `${filtro('id', 'eq', id)}&select=id`, {
+    senha_hash: senhaHash,
+  })
+  if (linhas.length === 0) return { ok: false as const, erro: 'Usuário não encontrado.' }
+  return { ok: true as const, login: usuario.login, erro: null }
+}
+
+export async function excluirConta(id: string, ator: string) {
+  if (!idSeguro(id)) return { erro: 'Usuário não encontrado.', login: '' }
+  const resultado = supabaseConfigurado()
+    ? await excluirContaNuvem(id)
+    : await alterarLocal((store) => excluirContaLocal(store, id))
+  if (resultado.erro || !resultado.login) return { erro: resultado.erro ?? 'Usuário não encontrado.', login: '' }
+  if (!supabaseConfigurado()) await tirarParticipanteLocal(id)
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_DELETED',
+    ator,
+    mensagem: `${ator} excluiu a conta ${resultado.login}.`,
+    detalhe: { login: resultado.login },
+  })
+  return { erro: null, login: resultado.login }
+}
+
+function excluirContaLocal(store: Store, id: string) {
+  const usuario = store.usuarios.find((item) => item.id === id)
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
+  const ids = store.usuarios.filter((item) => item.papel === 'administrador' && item.ativo).map((item) => item.id)
+  if (!sobraAdministrador(ids, id, usuario.papel, false, true)) {
+    return { erro: 'O único administrador ativo não pode ser excluído.', login: '' }
+  }
+  store.usuarios = store.usuarios.filter((item) => item.id !== id)
+  return { erro: null, login: usuario.login }
+}
+
+async function excluirContaNuvem(id: string) {
+  const usuario = await buscarUsuarioPublicoPorId(id)
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
+  const ids = await idsAdministradoresAtivos()
+  if (!sobraAdministrador(ids, id, usuario.papel, false, true)) {
+    return { erro: 'O único administrador ativo não pode ser excluído.', login: '' }
+  }
+  const linhas = await apagarOnde<{ id: string }>('usuarios', `${filtro('id', 'eq', id)}&select=id`)
+  if (linhas.length === 0) return { erro: 'Usuário não encontrado.', login: '' }
+  return { erro: null, login: usuario.login }
+}
+
+export async function registrarPedido(entrada: { nome: string; email: string; celular: string }) {
+  const erro = supabaseConfigurado()
+    ? await registrarPedidoNuvem(entrada)
+    : await alterarLocal((store) => registrarPedidoLocal(store, entrada))
+  if (erro) return erro
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_SIGNUP_REQUESTED',
+    ator: null,
+    mensagem: `${entrada.nome} pediu acesso.`,
+    detalhe: { email: entrada.email },
+  })
+  return null
+}
+
+function registrarPedidoLocal(store: Store, entrada: { nome: string; email: string; celular: string }) {
+  const emailEmUso =
+    store.usuarios.some((item) => item.email === entrada.email) ||
+    store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente')
+  if (emailEmUso) return EMAIL_EM_USO
+  store.pedidos.push({
+    id: crypto.randomUUID(),
+    nome: entrada.nome,
+    email: entrada.email,
+    celular: entrada.celular,
+    criadoEm: new Date().toISOString(),
+    situacao: 'pendente',
+    decididoEm: null,
+    decididoPor: null,
+  })
+  return null
+}
+
+async function registrarPedidoNuvem(entrada: { nome: string; email: string; celular: string }) {
+  if ((await existeEmailExato(entrada.email)) || (await existePedidoPendente(entrada.email))) return EMAIL_EM_USO
+  try {
+    await inserirLinha<{ id: string }>(
+      'pedidos_acesso',
+      {
+        id: crypto.randomUUID(),
+        nome: entrada.nome,
+        email: entrada.email,
+        celular: entrada.celular,
+        criado_em: new Date().toISOString(),
+        situacao: 'pendente',
+        decidido_em: null,
+        decidido_por: null,
+      },
+      'id',
+    )
+  } catch (erro) {
+    return traduzirUnico(erro, { pedidos_acesso_email_pendente: EMAIL_EM_USO })
+  }
+  return null
+}
+
+export async function decidirPedidoOperacao(id: string, acao: 'aprovar' | 'rejeitar', ator: string) {
+  const vazio = { erro: PEDIDO_NAO_PENDENTE, email: '', nome: '', token: '' }
+  if (!idSeguro(id)) return vazio
+  const resultado = supabaseConfigurado()
+    ? await decidirPedidoNuvem(id, acao, ator)
+    : await alterarLocal((store) => decidirPedidoLocal(store, id, acao, ator))
+  if (resultado.erro) return resultado
+  await registrarEvento({
+    nivel: 'info',
+    evento: acao === 'aprovar' ? 'USER_APPROVED' : 'USER_REJECTED',
+    ator,
+    mensagem:
+      acao === 'aprovar'
+        ? `${ator} aprovou o pedido de ${resultado.nome}. O link de confirmação segue para o e-mail.`
+        : `${ator} rejeitou o pedido de ${resultado.nome}.`,
+    detalhe: { email: resultado.email },
+  })
+  return resultado
+}
+
+function decidirPedidoLocal(store: Store, id: string, acao: 'aprovar' | 'rejeitar', ator: string) {
+  const pedido = store.pedidos.find((item) => item.id === id)
+  if (!pedido || pedido.situacao !== 'pendente') {
+    return { erro: PEDIDO_NAO_PENDENTE, email: '', nome: '', token: '' }
+  }
+  if (
+    acao === 'aprovar' &&
+    store.usuarios.some((item) => item.email != null && item.email.toLowerCase() === pedido.email)
+  ) {
+    return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
+  }
+  pedido.situacao = acao === 'aprovar' ? 'aprovado' : 'rejeitado'
+  pedido.decididoEm = new Date().toISOString()
+  pedido.decididoPor = ator
+  const token =
+    acao === 'aprovar'
+      ? emitirLink(store.links, {
+          tipo: 'confirmacao',
+          email: pedido.email,
+          pedidoId: pedido.id,
+          usuarioId: null,
+        })
+      : ''
+  return { erro: null, email: pedido.email, nome: pedido.nome, token }
+}
+
+async function decidirPedidoNuvem(id: string, acao: 'aprovar' | 'rejeitar', ator: string) {
+  const pedido = await buscarPedidoPorId(id)
+  if (!pedido || pedido.situacao !== 'pendente') {
+    return { erro: PEDIDO_NAO_PENDENTE, email: '', nome: '', token: '' }
+  }
+  if (acao === 'aprovar' && (await existeEmailNaConta(pedido.email, false))) {
+    return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
+  }
+  const linhas = await atualizarOnde<PedidoRow>(
+    'pedidos_acesso',
+    `${filtro('id', 'eq', id)}&situacao=eq.pendente&select=id,nome,email,celular,criado_em,situacao,decidido_em,decidido_por`,
+    {
+      situacao: acao === 'aprovar' ? 'aprovado' : 'rejeitado',
+      decidido_em: new Date().toISOString(),
+      decidido_por: ator,
+    },
+  )
+  if (linhas.length === 0) return { erro: PEDIDO_NAO_PENDENTE, email: '', nome: '', token: '' }
+  const gravado = pedidoDe(linhas[0])
+  if (acao !== 'aprovar') return { erro: null, email: gravado.email, nome: gravado.nome, token: '' }
+  try {
+    const token = await emitirNaNuvem({
+      tipo: 'confirmacao',
+      email: gravado.email,
+      pedidoId: gravado.id,
+      usuarioId: null,
+    })
+    return { erro: null, email: gravado.email, nome: gravado.nome, token }
+  } catch (erro) {
+    console.error(`[pedido] falha ao gerar link depois da aprovação: ${textoDiagnostico(erro)}`)
+    await registrarEvento({
+      nivel: 'alerta',
+      evento: 'USER_APPROVED',
+      ator,
+      mensagem: `${ator} aprovou o pedido de ${gravado.nome}. O link de confirmação não foi gerado.`,
+      detalhe: { email: gravado.email },
+    })
+    return {
+      erro: 'Pedido aprovado. O link não foi gerado. Reenvie a notificação.',
+      email: gravado.email,
+      nome: gravado.nome,
+      token: '',
+    }
+  }
+}
+
+export async function reenviarConvite(id: string, ator: string) {
+  if (!idSeguro(id)) return { erro: 'Só dá para reenviar um pedido aprovado.', email: '', nome: '', token: '' }
+  const resultado = supabaseConfigurado()
+    ? await reenviarConviteNuvem(id)
+    : await alterarLocal((store) => reenviarConviteLocal(store, id))
+  if (resultado.erro) return resultado
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_NOTIFY_RESEND',
+    ator,
+    mensagem: `${ator} reenviou a confirmação para ${resultado.email}.`,
+    detalhe: { email: resultado.email },
+  })
+  return resultado
+}
+
+function reenviarConviteLocal(store: Store, id: string) {
+  const pedido = store.pedidos.find((item) => item.id === id)
+  if (!pedido || pedido.situacao !== 'aprovado') {
+    return { erro: 'Só dá para reenviar um pedido aprovado.', email: '', nome: '', token: '' }
+  }
+  const usuario = store.usuarios.find(
+    (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
+  )
+  if (usuario) {
+    return { erro: 'A conta deste e-mail já existe. O reenvio não cria outra.', email: '', nome: '', token: '' }
+  }
+  const token = emitirLink(store.links, {
+    tipo: 'confirmacao',
+    email: pedido.email,
+    pedidoId: pedido.id,
+    usuarioId: null,
+  })
+  return { erro: null, email: pedido.email, nome: pedido.nome, token }
+}
+
+async function reenviarConviteNuvem(id: string) {
+  const pedido = await buscarPedidoPorId(id)
+  if (!pedido || pedido.situacao !== 'aprovado') {
+    return { erro: 'Só dá para reenviar um pedido aprovado.', email: '', nome: '', token: '' }
+  }
+  if (await existeEmailNaConta(pedido.email, true)) {
+    return { erro: 'A conta deste e-mail já existe. O reenvio não cria outra.', email: '', nome: '', token: '' }
+  }
+  const token = await emitirNaNuvem({
+    tipo: 'confirmacao',
+    email: pedido.email,
+    pedidoId: pedido.id,
+    usuarioId: null,
+  })
+  return { erro: null, email: pedido.email, nome: pedido.nome, token }
+}
+
+export async function prepararRecuperacao(email: string) {
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PASSWORD_RECOVERY_REQUESTED',
+    ator: null,
+    mensagem: 'Alguém pediu recuperação de senha.',
+    detalhe: { email },
+  })
+  if (!supabaseConfigurado()) {
+    return alterarLocal((store) => prepararRecuperacaoLocal(store, email))
+  }
+  const lista = await lerUsuariosPublicos(`${filtro('email', 'eq', email)}&limit=1`)
+  const usuario = lista[0]
+  if (!usuario?.ativo || (await linkSenhaRecente(email))) return ''
+  return emitirNaNuvem({ tipo: 'senha', email, pedidoId: null, usuarioId: usuario.id })
+}
+
+function prepararRecuperacaoLocal(store: Store, email: string) {
+  const usuario = store.usuarios.find((item) => item.email === email && item.ativo)
+  if (!usuario || linkRecente(store.links, 'senha', email)) return ''
+  return emitirLink(store.links, {
+    tipo: 'senha',
+    email,
+    pedidoId: null,
+    usuarioId: usuario.id,
+  })
+}
+
+export async function confirmarConta(entrada: { token: string; login: string; senha: string }) {
+  const resultado = supabaseConfigurado()
+    ? await confirmarContaNuvem(entrada)
+    : await confirmarContaLocal(entrada)
+  if (resultado.erro) return resultado
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_CONFIRMED',
+    ator: resultado.login,
+    mensagem: `${resultado.login} confirmou o acesso.`,
+    detalhe: { email: resultado.email },
+  })
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_LOGIN',
+    ator: resultado.login,
+    mensagem: `${resultado.login} entrou.`,
+    detalhe: { papel: 'comum' },
+  })
+  return resultado
+}
+
+async function confirmarContaLocal(entrada: { token: string; login: string; senha: string }) {
+  const senhaHash = await hashSenha(entrada.senha)
+  return alterarLocal((store) => {
+    const link = acharLink(store.links, entrada.token)
+    const motivo = motivoDoLink(link, 'confirmacao')
+    if (motivo || !link) {
+      return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '' }
+    }
+    const pedido = store.pedidos.find((item) => item.id === link.pedidoId)
+    if (!pedido || pedido.situacao !== 'aprovado') {
+      return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+    }
+    if (store.usuarios.some((item) => item.login === entrada.login)) {
+      return { erro: LOGIN_EM_USO, usuarioId: '', login: '', email: '' }
+    }
+    if (store.usuarios.some((item) => item.email === link.email)) {
+      return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '' }
+    }
+    const usuarioId = crypto.randomUUID()
+    store.usuarios.push({
+      id: usuarioId,
+      nome: pedido.nome,
+      email: link.email,
+      celular: pedido.celular,
+      login: entrada.login,
+      senhaHash,
+      papel: 'comum',
+      ativo: true,
+      origem: 'pedido',
+      ocultarBoasVindas: false,
+    })
+    link.usadoEm = new Date().toISOString()
+    return { erro: null, usuarioId, login: entrada.login, email: link.email }
+  })
+}
+
+async function confirmarContaNuvem(entrada: { token: string; login: string; senha: string }) {
+  const link = await buscarLinkPorToken(entrada.token)
+  const motivo = motivoDoLink(link, 'confirmacao')
+  if (motivo || !link) return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '' }
+  if (!link.pedidoId) return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+  const pedido = await buscarPedidoPorId(link.pedidoId)
+  if (!pedido || pedido.situacao !== 'aprovado') {
+    return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+  }
+  if (await existeLogin(entrada.login)) return { erro: LOGIN_EM_USO, usuarioId: '', login: '', email: '' }
+  if (await existeEmailExato(link.email)) return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '' }
+  const usuarioId = crypto.randomUUID()
+  const senhaHash = await hashSenha(entrada.senha)
+  try {
+    await inserirUsuarioNuvem({
+      id: usuarioId,
+      nome: pedido.nome,
+      email: link.email,
+      celular: pedido.celular,
+      login: entrada.login,
+      senha_hash: senhaHash,
+      papel: 'comum',
+      ativo: true,
+      origem: 'pedido',
+      ocultar_boas_vindas: false,
+    })
+  } catch (erro) {
+    return {
+      erro: traduzirUnico(erro, {
+        usuarios_login_key: LOGIN_EM_USO,
+        usuarios_email_unico: EMAIL_TEM_CONTA,
+      }),
+      usuarioId: '',
+      login: '',
+      email: '',
+    }
+  }
+  try {
+    await marcarLinkNaNuvem(link.id)
+  } catch (erro) {
+    console.error(`[auditoria] falha ao marcar link de confirmação: ${textoDiagnostico(erro)}`)
+  }
+  return { erro: null, usuarioId, login: entrada.login, email: link.email }
+}
+
+export async function trocarSenhaPeloLink(token: string, senha: string) {
+  const resultado = supabaseConfigurado()
+    ? await trocarSenhaPeloLinkNuvem(token, senha)
+    : await trocarSenhaPeloLinkLocal(token, senha)
+  if (resultado.erro) return resultado.erro
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_PASSWORD_CHANGED',
+    ator: resultado.login,
+    mensagem: `${resultado.login} definiu uma senha nova pelo link.`,
+    detalhe: { login: resultado.login },
+  })
+  return null
+}
+
+async function trocarSenhaPeloLinkLocal(token: string, senha: string) {
+  const senhaHash = await hashSenha(senha)
+  return alterarLocal((store) => {
+    const link = acharLink(store.links, token)
+    const motivo = motivoDoLink(link, 'senha')
+    if (motivo || !link) return { erro: motivo ?? 'Este link não vale.', login: '' }
+    const usuario = store.usuarios.find((item) => item.id === link.usuarioId && item.email === link.email)
+    if (!usuario || !usuario.ativo) {
+      return { erro: 'Esta conta não pode trocar a senha por este link.', login: '' }
+    }
+    usuario.senhaHash = senhaHash
+    link.usadoEm = new Date().toISOString()
+    return { erro: null, login: usuario.login }
+  })
+}
+
+async function trocarSenhaPeloLinkNuvem(token: string, senha: string) {
+  const link = await buscarLinkPorToken(token)
+  const motivo = motivoDoLink(link, 'senha')
+  if (motivo || !link) return { erro: motivo ?? 'Este link não vale.', login: '' }
+  if (!link.usuarioId) return { erro: 'Esta conta não pode trocar a senha por este link.', login: '' }
+  const usuario = await buscarUsuarioPublicoPorId(link.usuarioId)
+  if (!usuario || !usuario.ativo || usuario.email !== link.email) {
+    return { erro: 'Esta conta não pode trocar a senha por este link.', login: '' }
+  }
+  const marcado = await marcarLinkNaNuvem(link.id)
+  if (!marcado) return { erro: 'Este link já foi usado.', login: '' }
+  const senhaHash = await hashSenha(senha)
+  try {
+    const linhas = await atualizarOnde<{ id: string }>(
+      'usuarios',
+      `${filtro('id', 'eq', usuario.id)}&select=id`,
+      { senha_hash: senhaHash },
+    )
+    if (linhas.length === 0) return { erro: 'Não foi possível gravar a senha. Peça um link novo.', login: '' }
+  } catch (erro) {
+    console.error(`[senha] falha ao gravar depois de consumir o link: ${textoDiagnostico(erro)}`)
+    return { erro: 'Não foi possível gravar a senha. Peça um link novo.', login: '' }
+  }
+  return { erro: null, login: usuario.login }
+}
+
+export async function ocultarBoasVindasDaConta(id: string) {
+  if (!idSeguro(id)) return
+  if (!supabaseConfigurado()) {
+    await alterarLocal((store) => {
+      const atual = store.usuarios.find((item) => item.id === id)
+      if (atual) atual.ocultarBoasVindas = true
+    })
+    return
+  }
+  await atualizarOnde<{ id: string }>('usuarios', `${filtro('id', 'eq', id)}&select=id`, {
+    ocultar_boas_vindas: true,
+  })
+}
+
+export async function salvarEstadoEntrega(linha: EntregaEstadoRow) {
+  if (!/^[\w-]+$/.test(linha.entrega_id)) throw new Error('Entrega inválida.')
+  if (supabaseConfigurado()) {
+    await gravarTabela('entrega_estados', [linha])
+    return
+  }
+  await alterarLocal((store) => {
+    const atual = store.estados.find((item) => item.entrega_id === linha.entrega_id)
+    if (atual) Object.assign(atual, linha)
+    else store.estados.push({ ...linha })
+  })
 }
