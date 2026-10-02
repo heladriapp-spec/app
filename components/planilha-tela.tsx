@@ -11,7 +11,7 @@ import { formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/numeros'
 import { lancamentoDaLinha } from '@/lib/projetos/lancamento'
 import type { Lancamento, Projeto } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Circle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
@@ -106,6 +106,11 @@ export function PlanilhaTela({ projeto, linhas }: { projeto: Projeto; linhas: Li
                 aria-current={item.id === atual.id ? 'page' : undefined}
               >
                 <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
+                {preenchido ? (
+                  <Check className="size-3.5 shrink-0" aria-hidden />
+                ) : (
+                  <Circle className="size-3.5 shrink-0" aria-hidden />
+                )}
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{item.nome}</span>
                   <span className="block truncate text-[0.7rem] opacity-70">
@@ -318,9 +323,9 @@ function dica(capitulo: Capitulo, valores: Record<string, Lancamento>) {
 
 function classeCapitulo(preenchido: boolean, ativo: boolean) {
   return cn(
-    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left',
+    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors',
     preenchido ? 'border-emerald-400 bg-emerald-50 text-emerald-950' : 'border-amber-400 bg-amber-50 text-amber-950',
-    ativo && 'ring-2 ring-foreground',
+    ativo && 'ring-2 ring-primary/40',
   )
 }
 

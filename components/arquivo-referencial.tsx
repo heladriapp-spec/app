@@ -1,6 +1,7 @@
 import { buttonVariants } from '@/components/ui/button'
 import { dataHoraBR } from '@/lib/formato'
 import type { Projeto } from '@/lib/projetos/tipos'
+import { Download, FileDown } from 'lucide-react'
 
 export function ArquivoReferencial({
   projeto,
@@ -25,10 +26,12 @@ export function ArquivoReferencial({
           href={`/api/projetos/${projeto.id}/arquivo?papel=origem`}
           className={buttonVariants({ variant: 'outline' })}
         >
+          <Download data-icon="inline-start" />
           Baixar original
         </a>
         {projeto.status === 'concluido' && projeto.arquivoGeradoNome ? (
           <a href={`/api/projetos/${projeto.id}/arquivo?papel=gerado`} className={buttonVariants()}>
+            <FileDown data-icon="inline-start" />
             Baixar planilha gerada
           </a>
         ) : null}

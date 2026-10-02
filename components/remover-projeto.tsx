@@ -1,5 +1,6 @@
 import { removerProjeto } from '@/app/actions/projetos'
 import { Button, buttonVariants } from '@/components/ui/button'
+import { Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
 export function RemoverProjeto({
@@ -18,6 +19,7 @@ export function RemoverProjeto({
   if (!confirmar) {
     return (
       <Link href={destinoConfirmar} className={buttonVariants({ variant: 'destructive', size: 'sm' })}>
+        <Trash2 data-icon="inline-start" />
         Remover
       </Link>
     )

@@ -12,6 +12,7 @@ import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
 import { STATUS_PROJETO } from '@/lib/projetos/tipos'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
@@ -38,7 +39,8 @@ export default async function ProjetoPage({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground">
-            <Link href="/" className="underline">
+            <Link href="/" className="inline-flex items-center gap-1 hover:text-foreground">
+              <ArrowLeft className="size-3.5" />
               Projetos
             </Link>
           </p>

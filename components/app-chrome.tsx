@@ -18,31 +18,23 @@ export function AppChrome({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-dvh bg-background">
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col bg-[#1b2836] text-slate-200 md:flex">
+    <div className="flex min-h-dvh bg-muted/50">
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-card md:flex">
         <div className="px-4 pt-5 pb-4">
-          <p className="text-sm font-semibold text-white">Heladri</p>
-          <p className="text-[0.7rem] text-slate-400">Planilha do SESC</p>
-          <AppVersao className="mt-1 text-slate-400" />
+          <p className="text-sm font-semibold">Heladri</p>
+          <p className="text-xs text-muted-foreground">Planilha do SESC</p>
+          <AppVersao className="mt-1 text-muted-foreground" />
         </div>
         <div className="flex-1 overflow-y-auto px-3">
-          <AppNavLinks groups={groups} />
+          <AppNavLinks groups={groups} tom="claro" />
         </div>
-        <div className="border-t border-white/10 px-4 py-3">
-          <p className="text-[0.7rem] leading-snug text-slate-400">
-            Operação da aplicação. O trabalho é a planilha.
-          </p>
-          <p className="mt-2 truncate text-xs text-slate-200" title={usuario.login}>
+        <div className="border-t px-4 py-3">
+          <p className="truncate text-sm" title={usuario.login}>
             {usuario.nome}
           </p>
-          <p className="text-[0.7rem] text-slate-400">{PAPEL[usuario.papel]}</p>
+          <p className="text-xs text-muted-foreground">{PAPEL[usuario.papel]}</p>
           <form action={sair} data-aviso="sair" className="mt-2">
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="text-slate-200 hover:bg-white/10 hover:text-white"
-            >
+            <Button type="submit" variant="ghost" size="sm">
               <LogOut data-icon="inline-start" />
               Sair
             </Button>
@@ -58,6 +50,7 @@ export function AppChrome({
           </div>
           <form action={sair} data-aviso="sair">
             <Button type="submit" variant="ghost" size="sm">
+              <LogOut data-icon="inline-start" />
               Sair
             </Button>
           </form>

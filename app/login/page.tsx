@@ -4,6 +4,7 @@ import { usuarioDaSessao } from '@/lib/auth/guard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LogIn } from 'lucide-react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
@@ -39,14 +40,16 @@ export default async function LoginPage({
           <Label htmlFor="senha">Senha</Label>
           <Input id="senha" name="senha" type="password" autoComplete="current-password" required />
         </div>
-        <Button type="submit">Entrar</Button>
+        <Button type="submit">
+          <LogIn data-icon="inline-start" />
+          Entrar
+        </Button>
       </form>
-      <p className="text-sm">
-        <Link href="/pedir-acesso" className="underline">
+      <p className="flex gap-4 text-sm">
+        <Link href="/pedir-acesso" className="text-muted-foreground hover:text-foreground">
           Pedir acesso
         </Link>
-        {' · '}
-        <Link href="/esqueci-senha" className="underline">
+        <Link href="/esqueci-senha" className="text-muted-foreground hover:text-foreground">
           Esqueci a senha
         </Link>
       </p>

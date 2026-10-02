@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { Download, FileDown, Loader2, Save } from 'lucide-react'
 
 export function AcoesPreenchimento({
   ocupado,
@@ -18,6 +19,7 @@ export function AcoesPreenchimento({
   return (
     <>
       <Button type="submit" name="acao" value="rascunho" variant="outline" disabled={ocupado}>
+        <Save data-icon="inline-start" />
         Salvar rascunho
       </Button>
       <Button
@@ -29,6 +31,11 @@ export function AcoesPreenchimento({
           if (form) onBaixar(form)
         }}
       >
+        {baixando ? (
+          <Loader2 className="animate-spin" data-icon="inline-start" />
+        ) : (
+          <Download data-icon="inline-start" />
+        )}
         {baixando ? 'Preparando…' : 'Baixar planilha'}
       </Button>
       <Button
@@ -39,6 +46,11 @@ export function AcoesPreenchimento({
           if (form) onConcluir(form)
         }}
       >
+        {concluindo ? (
+          <Loader2 className="animate-spin" data-icon="inline-start" />
+        ) : (
+          <FileDown data-icon="inline-start" />
+        )}
         {concluindo ? 'Gerando…' : 'Concluir e baixar'}
       </Button>
     </>

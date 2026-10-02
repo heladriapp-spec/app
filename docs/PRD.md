@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.8.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A próxima da fila é a modernidade da aplicação: interface mais leve, com ícones onde o gesto já é claro, e resposta em cada ação no próprio botão — carregando, documento salvo, gerando o arquivo. Excluir linha, o histórico de versões e o erro inesperado continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A próxima da fila é a modernidade nas ações: carregando, documento salvo e gerando o arquivo, no próprio botão. Excluir linha, o histórico de versões e o erro inesperado continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -243,7 +243,7 @@ A tela autenticada fica mais moderna e mais leve, com o jeito de um aplicativo. 
 
 O ícone entra onde o gesto já é conhecido: navegar, criar projeto, salvar, baixar, sair e marcar o estado do capítulo. O rótulo em texto permanece ao lado quando a pessoa ainda precisa ler o que aquilo faz. Onde o conteúdo é o que se lê — descrição do item, nome do projeto, aviso, formulário — o texto continua sendo o principal. Ícone não substitui esse texto.
 
-A navegação lateral já mostra ícone com o nome da seção. Esta entrega estende o mesmo critério ao restante da aplicação, sem deixar a tela mais densa.
+A navegação lateral já mostra ícone com o nome da seção. Esta entrega estende o mesmo critério ao restante da aplicação, sem deixar a tela mais densa. Está na 0.9.0.
 
 ### 6.11 Modernidade nas ações
 
@@ -435,14 +435,14 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Boas-vindas com o nome de quem entrou | 0.11.0 | Recado depois do login, cinco segundos ou Fechar, Não mostrar de novo na conta. Efetivo nesta 0.8.0 |
 | Aviso de processamento e de ação concluída | 0.12.0 | Processando, com relógio, e Ação concluída. Efetivo nesta 0.8.0 |
 | Sair com Alt+Esc | 0.13.0 | Alt+Esc e o botão Sair: Encerrando sessão e Sessão encerrada. Efetivo nesta 0.8.0 |
+| Modernidade da interface | 0.14.0 | Tela mais leve, com ícone onde o gesto já é claro e texto onde a pessoa precisa ler. Efetivo nesta 0.9.0 |
 
 ### Ainda na fila
 
-1. **Modernidade da interface** (0.14.0). Tela mais moderna e mais leve. Onde o gesto já é claro, o ícone acompanha a ação. O texto fica quando a pessoa precisa ler (seção 6.10).
-2. **Modernidade nas ações** (0.15.0). O botão clicado mostra carregando, documento salvo ou gerando o arquivo. Não pergunta se deseja salvar. O efeito fica no controle (seção 6.11).
-3. **Erro inesperado. Consulte o administrador.** no lugar da falha crua. Recusa já prevista continua com o texto dela (seção 6.9).
-4. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
-5. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. **Modernidade nas ações** (0.15.0). O botão clicado mostra carregando, documento salvo ou gerando o arquivo. Não pergunta se deseja salvar. O efeito fica no controle (seção 6.11).
+2. **Erro inesperado. Consulte o administrador.** no lugar da falha crua. Recusa já prevista continua com o texto dela (seção 6.9).
+3. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
+4. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 

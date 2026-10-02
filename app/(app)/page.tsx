@@ -7,6 +7,7 @@ import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { listarProjetos } from '@/lib/projetos/store'
 import { STATUS_PROJETO, type Projeto } from '@/lib/projetos/tipos'
+import { FileSpreadsheet, Plus, Trash2 } from 'lucide-react'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 
@@ -38,6 +39,7 @@ export default async function InicioPage({
         </div>
         {usuario.papel === 'administrador' ? (
           <Link href="/projetos/novo" className={buttonVariants()}>
+            <Plus data-icon="inline-start" />
             Criar novo projeto
           </Link>
         ) : null}
@@ -49,24 +51,30 @@ export default async function InicioPage({
       ) : null}
       {avisos.ok ? <p className="rounded-lg border px-3 py-2 text-sm">{avisos.ok}</p> : null}
       {projetos.length === 0 ? (
-        <p className="rounded-lg border px-3 py-6 text-sm text-muted-foreground">
+        <p className="rounded-xl border bg-card px-4 py-8 text-sm text-muted-foreground">
           {usuario.papel === 'administrador'
             ? 'Nenhum projeto ainda. Crie o primeiro e, se quiser, carregue a planilha do SESC.'
             : 'Nenhum projeto em que você atua.'}
         </p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="grid gap-2">
           {projetos.map((projeto) => {
             const confirmando =
               usuario.papel === 'administrador' && avisos.confirmar === projeto.id
             return (
-              <li key={projeto.id}>
+              <li key={projeto.id} className="rounded-xl border bg-card">
                 <div className="flex items-center gap-3 px-3 py-3">
-                  <Link href={`/projetos/${projeto.id}`} className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="font-medium">{projeto.nome}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]}
-                      {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''} · {textoAlteracao(projeto)}
+                  <Link
+                    href={`/projetos/${projeto.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3"
+                  >
+                    <FileSpreadsheet className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="font-medium">{projeto.nome}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {dataProjetoBR(projeto.data)} · {STATUS_PROJETO[projeto.status]}
+                        {projeto.arquivoNome ? ` · ${projeto.arquivoNome}` : ''} · {textoAlteracao(projeto)}
+                      </span>
                     </span>
                   </Link>
                   {usuario.papel === 'administrador' && !confirmando ? (

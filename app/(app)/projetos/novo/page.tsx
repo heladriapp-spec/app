@@ -1,10 +1,11 @@
 import { criarProjeto } from '@/app/actions/projetos'
 import { FormPlanilha } from '@/components/form-planilha'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { requireAdmin } from '@/lib/auth/guard'
 import { dataHojeISO } from '@/lib/planilha/numeros'
+import { Plus, Save } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function NovoProjetoPage({
@@ -52,17 +53,16 @@ export default async function NovoProjetoPage({
             gerada na conclusão.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit" name="acao" value="rascunho" variant="outline">
+            <Save data-icon="inline-start" />
             Salvar rascunho
           </Button>
           <Button type="submit" name="acao" value="criar">
+            <Plus data-icon="inline-start" />
             Criar projeto
           </Button>
-          <Link
-            href="/"
-            className="inline-flex h-8 items-center rounded-lg border px-2.5 text-sm font-medium"
-          >
+          <Link href="/" className={buttonVariants({ variant: 'ghost' })}>
             Cancelar
           </Link>
         </div>

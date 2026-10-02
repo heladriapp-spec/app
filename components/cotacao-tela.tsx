@@ -18,7 +18,7 @@ import { formatarMoedaBR, formatarNumeroBR, lerNumeroBR } from '@/lib/planilha/n
 import { adesaoDe, opcoesStatus, type OpcaoStatus } from '@/lib/planilha/status'
 import type { ExtraServico } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Circle, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -147,6 +147,11 @@ export function CotacaoTela({
                   aria-current={item.id === atual.id ? 'page' : undefined}
                 >
                   <span className="w-5 shrink-0 text-xs tabular-nums opacity-70">{indice + 1}</span>
+                  {estado === true ? (
+                    <Check className="size-3.5 shrink-0" aria-hidden />
+                  ) : estado === false ? (
+                    <Circle className="size-3.5 shrink-0" aria-hidden />
+                  ) : null}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{item.nome}</span>
                     <DicaCapitulo capitulo={item} cotacao={cotacao} valores={valores} />
@@ -248,11 +253,11 @@ export function CotacaoTela({
 
 function classeCapitulo(preenchido: boolean | null, ativo: boolean) {
   return cn(
-    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left',
+    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors',
     preenchido === true && 'border-emerald-400 bg-emerald-50 text-emerald-950',
     preenchido === false && 'border-amber-400 bg-amber-50 text-amber-950',
     preenchido === null && 'border-border bg-background',
-    ativo && 'ring-2 ring-foreground',
+    ativo && 'ring-2 ring-primary/40',
   )
 }
 
