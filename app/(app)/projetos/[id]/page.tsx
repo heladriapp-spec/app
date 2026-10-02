@@ -32,6 +32,7 @@ export default async function ProjetoPage({
   const participa =
     usuario.papel === 'administrador' || projeto.participantes.includes(usuario.id)
   if (!participa) redirect('/')
+  const podeRemover = usuario.papel === 'administrador' || projeto.criadoPor === usuario.login
 
   const lida = await planilhaDoProjeto(projeto).catch(() => null)
 
@@ -48,7 +49,7 @@ export default async function ProjetoPage({
           titulo={projeto.nome}
           icone={FileSpreadsheet}
           acoes={
-            usuario.papel === 'administrador' && avisos.confirmar !== 'remover' ? (
+            podeRemover && avisos.confirmar !== 'remover' ? (
               <RemoverProjeto
                 id={projeto.id}
                 nome={projeto.nome}
@@ -64,7 +65,7 @@ export default async function ProjetoPage({
           <div id="conclusao-projeto" className="mt-3" />
         </CabecalhoPagina>
       </div>
-      {usuario.papel === 'administrador' && avisos.confirmar === 'remover' ? (
+      {podeRemover && avisos.confirmar === 'remover' ? (
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
           <RemoverProjeto
             id={projeto.id}

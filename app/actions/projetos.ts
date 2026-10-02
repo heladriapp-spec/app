@@ -1,6 +1,6 @@
 'use server'
 
-import { requireAdmin, requireUser } from '@/lib/auth/guard'
+import { requireUser } from '@/lib/auth/guard'
 import { lerPlanilha } from '@/lib/planilha/ler'
 import { AVISO_PLANILHA_GRANDE, LIMITE_PLANILHA } from '@/lib/planilha/limite'
 import { lancamentosIguais } from '@/lib/projetos/lancamento'
@@ -124,10 +124,11 @@ export async function criarProjeto(formData: FormData) {
 }
 
 export async function removerProjeto(formData: FormData) {
-  const admin = await requireAdmin()
+  const usuario = await requireUser()
   const id = String(formData.get('id') ?? '')
   const projeto = await projetoPorId(id)
   if (!projeto) voltar('/', 'Projeto não encontrado.')
+  if (!podeRemover(usuario, projeto)) voltar('/', 'Você só pode remover um projeto que você criou.')
 
   await alterarProjetos(async (projetos) => {
     const indice = projetos.findIndex((item) => item.id === id)
@@ -139,8 +140,8 @@ export async function removerProjeto(formData: FormData) {
     registrarNo(store, {
       nivel: 'info',
       evento: 'PROJECT_REMOVED',
-      ator: admin.login,
-      mensagem: `${admin.login} removeu o projeto “${projeto.nome}”.`,
+      ator: usuario.login,
+      mensagem: `${usuario.login} removeu o projeto “${projeto.nome}”.`,
       detalhe: { projeto: id },
     })
   })
@@ -268,4 +269,8 @@ async function gravarLancamentos(
 
 function podeLancar(usuarioId: string, papel: string, projeto: Projeto) {
   return papel === 'administrador' || projeto.participantes.includes(usuarioId)
+}
+
+function podeRemover(usuario: { login: string; papel: string }, projeto: Projeto) {
+  return usuario.papel === 'administrador' || projeto.criadoPor === usuario.login
 }

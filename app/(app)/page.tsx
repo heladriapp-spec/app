@@ -52,8 +52,8 @@ export default async function InicioPage({
       ) : (
         <ul className="grid gap-3">
           {projetos.map((projeto) => {
-            const confirmando =
-              usuario.papel === 'administrador' && avisos.confirmar === projeto.id
+            const podeRemover = usuario.papel === 'administrador' || projeto.criadoPor === usuario.login
+            const confirmando = podeRemover && avisos.confirmar === projeto.id
             return (
               <li key={projeto.id} className="rounded-2xl border bg-card shadow-sm">
                 <div className="flex items-center gap-4 px-4 py-4">
@@ -77,7 +77,7 @@ export default async function InicioPage({
                       </span>
                     </span>
                   </Link>
-                  {usuario.papel === 'administrador' && !confirmando ? (
+                  {podeRemover && !confirmando ? (
                     <RemoverProjeto
                       id={projeto.id}
                       nome={projeto.nome}

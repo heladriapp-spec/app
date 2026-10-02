@@ -143,7 +143,7 @@ export async function alterarProjetos<T>(fn: (projetos: Projeto[]) => T | Promis
   return exec
 }
 
-const COLUNAS_LISTA = 'id,nome,data,status,atualizado_em,atualizado_por,arquivo_nome'
+const COLUNAS_LISTA = 'id,nome,data,status,criado_por,atualizado_em,atualizado_por,arquivo_nome'
 const COLUNAS_PROJETO =
   'id,nome,data,criado_em,criado_por,atualizado_em,atualizado_por,arquivo_nome,arquivo_gerado_nome,concluido_em,concluido_por,capa,status,lancamentos'
 
@@ -157,18 +157,22 @@ function resumoDe(projeto: Projeto): ProjetoLista {
     nome: projeto.nome,
     data: projeto.data,
     status: projeto.status,
+    criadoPor: projeto.criadoPor,
     atualizadoEm: projeto.atualizadoEm,
     atualizadoPor: projeto.atualizadoPor,
     arquivoNome: projeto.arquivoNome,
   }
 }
 
-function resumoDaLinha(item: Pick<ProjetoRow, 'id' | 'nome' | 'data' | 'status' | 'atualizado_em' | 'atualizado_por' | 'arquivo_nome'>): ProjetoLista {
+function resumoDaLinha(
+  item: Pick<ProjetoRow, 'id' | 'nome' | 'data' | 'status' | 'criado_por' | 'atualizado_em' | 'atualizado_por' | 'arquivo_nome'>,
+): ProjetoLista {
   return {
     id: item.id,
     nome: item.nome,
     data: String(item.data).slice(0, 10),
     status: item.status,
+    criadoPor: item.criado_por,
     atualizadoEm: item.atualizado_em,
     atualizadoPor: item.atualizado_por,
     arquivoNome: item.arquivo_nome,

@@ -49,5 +49,5 @@ export type Projeto = {
 
 export type ProjetoLista = Pick<
   Projeto,
-  'id' | 'nome' | 'data' | 'status' | 'atualizadoEm' | 'atualizadoPor' | 'arquivoNome'
+  'id' | 'nome' | 'data' | 'status' | 'criadoPor' | 'atualizadoEm' | 'atualizadoPor' | 'arquivoNome'
 >
