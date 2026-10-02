@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
+import { RASCUNHO_SALVO } from '@/lib/projetos/frases'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
 import { STATUS_PROJETO } from '@/lib/projetos/tipos'
 import { ArrowLeft, FileSpreadsheet } from 'lucide-react'
@@ -77,8 +78,8 @@ export default async function ProjetoPage({
         </div>
       ) : null}
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
-      {avisos.ok && avisos.ok !== 'Documento salvo' ? <Recado tom="ok">{avisos.ok}</Recado> : null}
-      {avisos.ok === 'Documento salvo' && !lida ? <Recado tom="ok">Documento salvo</Recado> : null}
+      {avisos.ok && avisos.ok !== RASCUNHO_SALVO ? <Recado tom="ok">{avisos.ok}</Recado> : null}
+      {avisos.ok === RASCUNHO_SALVO && !lida ? <Recado tom="ok">{RASCUNHO_SALVO}</Recado> : null}
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <CotacaoTela
             projetoId={projeto.id}
@@ -86,7 +87,7 @@ export default async function ProjetoPage({
             arquivoGerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
             cotacao={lida.cotacao}
             iniciais={valoresDaCotacao(projeto, lida.cotacao)}
-            salvo={avisos.ok === 'Documento salvo'}
+            salvo={avisos.ok === RASCUNHO_SALVO}
           />
       ) : lida ? (
         <div className="flex flex-col gap-3">
@@ -96,7 +97,7 @@ export default async function ProjetoPage({
             {lida.capa.evento ? ` · ${lida.capa.evento}` : ''}
             {lida.capa.unidade ? ` · ${lida.capa.unidade}` : ''}
           </p>
-          <PlanilhaTela projeto={projeto} linhas={lida.linhas} salvo={avisos.ok === 'Documento salvo'} />
+          <PlanilhaTela projeto={projeto} linhas={lida.linhas} salvo={avisos.ok === RASCUNHO_SALVO} />
         </div>
       ) : (
         <div className="max-w-lg rounded-2xl border bg-card p-5 shadow-sm">

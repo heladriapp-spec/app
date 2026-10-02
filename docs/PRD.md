@@ -250,7 +250,7 @@ A navegação lateral já mostra ícone com o nome da seção. Esta entrega este
 A interação fica moderna e leve. O clique responde no próprio controle. A frase diz o que está acontecendo e, ao terminar, o que deu certo. Não cobre a tela e não pergunta se a pessoa deseja salvar ou não salvar.
 
 - Abrir um documento ou um projeto: o lugar clicado mostra que está carregando.
-- Salvar rascunho: ao terminar, documento salvo.
+- Salvar rascunho: ao terminar, rascunho salvo. O projeto continua rascunho.
 - Baixar ou concluir: gerando o arquivo, e depois o arquivo gerado.
 - Ir e voltar entre capítulos: botões de navegação, com o mesmo critério.
 

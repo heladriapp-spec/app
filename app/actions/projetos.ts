@@ -21,6 +21,7 @@ import {
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import type { Projeto } from '@/lib/projetos/tipos'
 import { registrarEvento } from '@/lib/operacao/store'
+import { RASCUNHO_SALVO } from '@/lib/projetos/frases'
 import { redirect } from 'next/navigation'
 
 function voltar(caminho: string, texto: string, ok = false): never {
@@ -115,7 +116,7 @@ export async function criarProjeto(formData: FormData) {
       : `${usuario.login} criou o projeto “${nome}”.`,
     detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
   })
-  if (rascunho) redirect(`/projetos/${id}?ok=${encodeURIComponent('Documento salvo')}`)
+  if (rascunho) redirect(`/projetos/${id}?ok=${encodeURIComponent(RASCUNHO_SALVO)}`)
   redirect(`/projetos/${id}`)
 }
 
@@ -260,7 +261,7 @@ async function gravarLancamentos(
     detalhe: { projeto: id },
   })
   const aviso = rascunho
-    ? 'Documento salvo'
+    ? RASCUNHO_SALVO
     : reabriu
       ? 'Preenchimento gravado. O projeto voltou para em preenchimento.'
       : 'Preenchimento gravado.'

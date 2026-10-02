@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { RASCUNHO_SALVO } from '@/lib/projetos/frases'
 import { Loader2, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
@@ -19,7 +20,7 @@ export function BotaoRascunho({ salvo = false, disabled = false }: { salvo?: boo
     return () => window.clearTimeout(timer)
   }, [salvo])
 
-  const texto = enviando ? 'Salvando' : frase ? 'Documento salvo' : 'Salvar rascunho'
+  const texto = enviando ? 'Salvando rascunho' : frase ? RASCUNHO_SALVO : 'Salvar rascunho'
 
   return (
     <Button
