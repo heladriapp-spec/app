@@ -1,17 +1,17 @@
 import { COOKIE_RECADO, COOKIE_SESSAO, emitirSessao, lerSessao } from '@/lib/auth/sessao'
-import { lerStore, publico, type UsuarioPublico } from '@/lib/operacao/store'
+import { buscarUsuarioPublicoPorId, type UsuarioPublico } from '@/lib/operacao/store'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 
-export async function usuarioDaSessao(): Promise<UsuarioPublico | null> {
+export const usuarioDaSessao = cache(async (): Promise<UsuarioPublico | null> => {
   const jar = await cookies()
   const id = lerSessao(jar.get(COOKIE_SESSAO)?.value)
   if (!id) return null
-  const store = await lerStore()
-  const usuario = store.usuarios.find((item) => item.id === id)
+  const usuario = await buscarUsuarioPublicoPorId(id)
   if (!usuario?.ativo) return null
-  return publico(usuario)
-}
+  return usuario
+})
 
 export async function requireUser() {
   const usuario = await usuarioDaSessao()

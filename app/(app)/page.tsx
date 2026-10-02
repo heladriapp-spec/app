@@ -9,7 +9,7 @@ import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { listarProjetos } from '@/lib/projetos/store'
-import { STATUS_PROJETO, type Projeto } from '@/lib/projetos/tipos'
+import { STATUS_PROJETO, type ProjetoLista } from '@/lib/projetos/tipos'
 import { FileSpreadsheet, FolderKanban, Plus } from 'lucide-react'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
@@ -22,11 +22,7 @@ export default async function InicioPage({
   const usuario = await requireUser()
   const recado = (await cookies()).get(COOKIE_RECADO)?.value === '1' && !usuario.ocultarBoasVindas
   const avisos = await searchParams
-  const todos = await listarProjetos()
-  const projetos =
-    usuario.papel === 'administrador'
-      ? todos
-      : todos.filter((item) => item.participantes.includes(usuario.id))
+  const projetos = await listarProjetos(usuario)
 
   return (
     <div className="flex flex-col gap-8">
@@ -113,6 +109,6 @@ export default async function InicioPage({
   )
 }
 
-function textoAlteracao(projeto: Projeto) {
+function textoAlteracao(projeto: ProjetoLista) {
   return `última alteração ${dataHoraBR(projeto.atualizadoEm)} por ${projeto.atualizadoPor}`
 }

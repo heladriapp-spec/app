@@ -6,7 +6,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { dataHoraBR } from '@/lib/formato'
 import { EVENTO_LABEL } from '@/lib/logs/rotulos'
-import { lerStore, type NivelLog } from '@/lib/operacao/store'
+import { listarLogs, type NivelLog } from '@/lib/operacao/store'
 import { ScrollText } from 'lucide-react'
 import Link from 'next/link'
 
@@ -24,8 +24,7 @@ export default async function LogsPage({
   const params = await searchParams
   const busca = (params.busca ?? '').trim().toLowerCase()
   const nivel = params.nivel === 'alerta' || params.nivel === 'erro' || params.nivel === 'info' ? params.nivel : ''
-  const store = await lerStore()
-  const logs = [...store.logs].reverse().filter((item) => {
+  const logs = [...(await listarLogs())].reverse().filter((item) => {
     if (nivel && item.nivel !== nivel) return false
     if (!busca) return true
     const texto = `${item.mensagem} ${item.evento} ${item.ator ?? ''}`.toLowerCase()

@@ -1,12 +1,12 @@
 import { parecerDaFila, resolverEntregas } from '@/lib/entregas/estado'
 import { montarPainelEsteira, resumirSaudeEsteira } from '@/lib/entregas/esteira'
-import { lerStore } from '@/lib/operacao/store'
+import { listarEstadosEntrega } from '@/lib/operacao/store'
 import { montarRelatorioSaude } from '@/lib/saude/executar'
 import { ambienteAtual, shaDoBuild } from '@/lib/versao'
 
 export async function carregarResolvidas() {
-  const store = await lerStore()
-  const resolvidas = resolverEntregas(store.estados)
+  const estados = await listarEstadosEntrega()
+  const resolvidas = resolverEntregas(estados)
   const { fila, parecer } = parecerDaFila(resolvidas)
   return { resolvidas, fila, parecer }
 }

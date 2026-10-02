@@ -1,5 +1,5 @@
 import { usuarioDaSessao } from '@/lib/auth/guard'
-import { lerArquivoDoProjeto, lerArquivoGerado, nomeDeDownload, projetoPorId } from '@/lib/projetos/store'
+import { lerArquivoDoProjeto, lerArquivoGerado, nomeDeDownload, projetoParaArquivo } from '@/lib/projetos/store'
 
 export async function GET(pedido: Request, contexto: { params: Promise<{ id: string }> }) {
   const usuario = await usuarioDaSessao()
@@ -7,7 +7,7 @@ export async function GET(pedido: Request, contexto: { params: Promise<{ id: str
   const { id } = await contexto.params
   if (!/^[\w-]+$/.test(id)) return texto('Projeto não encontrado.', 404)
 
-  const projeto = await projetoPorId(id)
+  const projeto = await projetoParaArquivo(id)
   if (!projeto) return texto('Projeto não encontrado.', 404)
   const participa = usuario.papel === 'administrador' || projeto.participantes.includes(usuario.id)
   if (!participa) return texto('Este projeto não está com você.', 403)

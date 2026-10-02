@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { dataHoraBR } from '@/lib/formato'
-import { lerStore, publico } from '@/lib/operacao/store'
+import { listarAtoresComLogin, listarPedidos, listarUsuariosPublicos } from '@/lib/operacao/store'
 import { Shield } from 'lucide-react'
 
 export default async function AdministracaoPage({
@@ -26,19 +26,19 @@ export default async function AdministracaoPage({
 }) {
   const { erro, ok, excluir } = await searchParams
   const sessao = await usuarioDaSessao()
-  const store = await lerStore()
-  const usuarios = store.usuarios.map(publico)
+  const [usuarios, pedidos, quemEntrou] = await Promise.all([
+    listarUsuariosPublicos(),
+    listarPedidos(),
+    listarAtoresComLogin(),
+  ])
   const adminsAtivos = usuarios.filter((item) => item.papel === 'administrador' && item.ativo)
-  const pendentes = store.pedidos.filter((item) => item.situacao === 'pendente')
-  const historico = store.pedidos.filter((item) => item.situacao !== 'pendente')
-  const quemEntrou = new Set(
-    store.logs.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator),
-  )
-  const aguardandoAcesso = store.pedidos
+  const pendentes = pedidos.filter((item) => item.situacao === 'pendente')
+  const historico = pedidos.filter((item) => item.situacao !== 'pendente')
+  const aguardandoAcesso = pedidos
     .filter((item) => item.situacao === 'aprovado')
     .map((pedido) => {
       const usuario =
-        store.usuarios.find(
+        usuarios.find(
           (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
         ) ?? null
       return {

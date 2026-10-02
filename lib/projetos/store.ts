@@ -1,7 +1,7 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { canonizarStatus, opcoesStatus } from '@/lib/planilha/status'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
-import type { ExtraServico, Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
+import type { ExtraServico, Lancamento, Projeto, ProjetoLista, StatusProjeto } from '@/lib/projetos/tipos'
 import {
   apagarFora,
   baixarPlanilha,
@@ -132,13 +132,126 @@ export async function alterarProjetos<T>(fn: (projetos: Projeto[]) => T | Promis
   return exec
 }
 
-export async function listarProjetos() {
-  return lerIndice()
+const COLUNAS_LISTA = 'id,nome,data,status,atualizado_em,atualizado_por,arquivo_nome'
+const COLUNAS_PROJETO =
+  'id,nome,data,criado_em,criado_por,atualizado_em,atualizado_por,arquivo_nome,arquivo_gerado_nome,concluido_em,concluido_por,capa,status,lancamentos'
+
+function idSeguro(id: string) {
+  return /^[\w-]+$/.test(id)
+}
+
+function resumoDe(projeto: Projeto): ProjetoLista {
+  return {
+    id: projeto.id,
+    nome: projeto.nome,
+    data: projeto.data,
+    status: projeto.status,
+    atualizadoEm: projeto.atualizadoEm,
+    atualizadoPor: projeto.atualizadoPor,
+    arquivoNome: projeto.arquivoNome,
+  }
+}
+
+function resumoDaLinha(item: Pick<ProjetoRow, 'id' | 'nome' | 'data' | 'status' | 'atualizado_em' | 'atualizado_por' | 'arquivo_nome'>): ProjetoLista {
+  return {
+    id: item.id,
+    nome: item.nome,
+    data: String(item.data).slice(0, 10),
+    status: item.status,
+    atualizadoEm: item.atualizado_em,
+    atualizadoPor: item.atualizado_por,
+    arquivoNome: item.arquivo_nome,
+  }
+}
+
+export async function listarProjetos(usuario: { id: string; papel: string }): Promise<ProjetoLista[]> {
+  const administrador = usuario.papel === 'administrador'
+  if (!supabaseConfigurado()) {
+    const projetos = await lerIndice()
+    const visiveis = administrador
+      ? projetos
+      : projetos.filter((item) => item.participantes.includes(usuario.id))
+    return visiveis.map(resumoDe)
+  }
+  if (!administrador) {
+    if (!idSeguro(usuario.id)) return []
+    const vinculos = await lerTabela<{ projeto_id: string }>(
+      'projeto_participantes',
+      `select=projeto_id&usuario_id=eq.${usuario.id}`,
+    )
+    const ids = vinculos.map((item) => item.projeto_id).filter(idSeguro)
+    if (ids.length === 0) return []
+    const lista = ids.map((id) => `"${id}"`).join(',')
+    const linhas = await lerTabela<ProjetoRow>(
+      'projetos',
+      `select=${COLUNAS_LISTA}&id=in.(${lista})&order=criado_em.asc`,
+    )
+    return linhas.map(resumoDaLinha)
+  }
+  const linhas = await lerTabela<ProjetoRow>('projetos', `select=${COLUNAS_LISTA}&order=criado_em.asc`)
+  return linhas.map(resumoDaLinha)
+}
+
+const COLUNAS_ARQUIVO = 'id,arquivo_nome,arquivo_gerado_nome'
+
+export async function projetoParaArquivo(id: string) {
+  if (!idSeguro(id)) return null
+  if (!supabaseConfigurado()) {
+    const projeto = await projetoPorId(id)
+    if (!projeto) return null
+    return {
+      id: projeto.id,
+      participantes: projeto.participantes,
+      arquivoNome: projeto.arquivoNome,
+      arquivoGeradoNome: projeto.arquivoGeradoNome,
+    }
+  }
+  const [linhas, vinculos] = await Promise.all([
+    lerTabela<Pick<ProjetoRow, 'id' | 'arquivo_nome' | 'arquivo_gerado_nome'>>(
+      'projetos',
+      `select=${COLUNAS_ARQUIVO}&id=eq.${id}&limit=1`,
+    ),
+    lerTabela<{ usuario_id: string }>('projeto_participantes', `select=usuario_id&projeto_id=eq.${id}`),
+  ])
+  const item = linhas[0]
+  if (!item) return null
+  return {
+    id: item.id,
+    participantes: vinculos.map((vinculo) => vinculo.usuario_id),
+    arquivoNome: item.arquivo_nome,
+    arquivoGeradoNome: item.arquivo_gerado_nome,
+  }
 }
 
 export async function projetoPorId(id: string) {
-  const projetos = await lerIndice()
-  return projetos.find((item) => item.id === id) ?? null
+  if (!idSeguro(id)) return null
+  if (!supabaseConfigurado()) {
+    const projetos = await lerIndice()
+    return projetos.find((item) => item.id === id) ?? null
+  }
+  const [linhas, vinculos] = await Promise.all([
+    lerTabela<ProjetoRow>('projetos', `select=${COLUNAS_PROJETO}&id=eq.${id}&limit=1`),
+    lerTabela<{ usuario_id: string }>('projeto_participantes', `select=usuario_id&projeto_id=eq.${id}`),
+  ])
+  const item = linhas[0]
+  if (!item) return null
+  return {
+    id: item.id,
+    nome: item.nome,
+    data: String(item.data).slice(0, 10),
+    criadoEm: item.criado_em,
+    criadoPor: item.criado_por,
+    atualizadoEm: item.atualizado_em,
+    atualizadoPor: item.atualizado_por,
+    participantes: vinculos.map((vinculo) => vinculo.usuario_id),
+    arquivoNome: item.arquivo_nome,
+    arquivoGeradoNome: item.arquivo_gerado_nome,
+    concluidoEm: item.concluido_em,
+    concluidoPor: item.concluido_por,
+    capa: item.capa,
+    status: item.status,
+    lancamentos: item.lancamentos ?? {},
+  }
 }
 
 export function caminhoDoArquivo(id: string) {

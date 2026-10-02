@@ -3,8 +3,8 @@ import { AuthShell } from '@/components/auth-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { acharLink, motivoDoLink, tokenInformado } from '@/lib/auth/links'
-import { lerStore } from '@/lib/operacao/store'
+import { motivoDoLink, tokenInformado } from '@/lib/auth/links'
+import { buscarLinkPorToken, buscarPedidoPorId } from '@/lib/operacao/store'
 import Link from 'next/link'
 
 export default async function ConfirmarPage({
@@ -17,10 +17,9 @@ export default async function ConfirmarPage({
   const { token: bruto } = await params
   const { erro } = await searchParams
   const token = tokenInformado(bruto)
-  const store = await lerStore()
-  const link = token ? acharLink(store.links, token) : null
+  const link = token ? await buscarLinkPorToken(token) : null
   const motivo = motivoDoLink(link, 'confirmacao')
-  const pedido = link ? store.pedidos.find((item) => item.id === link.pedidoId) : null
+  const pedido = link?.pedidoId ? await buscarPedidoPorId(link.pedidoId) : null
   const invalido = motivo ?? (pedido?.situacao === 'aprovado' ? null : 'Este link não vale.')
 
   return (

@@ -1,6 +1,7 @@
-import type { LinkAcesso, TipoLink } from '@/lib/auth/links'
+import { acharLink, hashDoToken, tokenInformado, type LinkAcesso, type TipoLink } from '@/lib/auth/links'
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { hashSenha } from '@/lib/auth/senha'
+import { cache } from 'react'
 import {
   apagarFora,
   colunaQueFalta,
@@ -172,11 +173,170 @@ export async function alterarStore<T>(fn: (store: Store) => T | Promise<T>): Pro
   return exec
 }
 
-export async function lerStore() {
-  if (supabaseConfigurado()) return lerNuvem()
-  const atual = await lerDisco()
-  if (atual) return completar(atual)
+/** Lê o arquivo local uma vez por requisição. Não é cache entre instâncias. */
+const lerOperacaoLocal = cache(async (): Promise<Store> => {
+  const disco = await lerDisco()
+  if (disco) return completar(disco)
   return alterarStore((store) => store)
+})
+
+function idSeguro(id: string) {
+  return /^[\w-]+$/.test(id)
+}
+
+const COLUNAS_USUARIO =
+  'id,nome,email,celular,login,papel,ativo,origem,ocultar_boas_vindas'
+
+type UsuarioPublicoRow = Omit<UsuarioRow, 'senha_hash'>
+
+function usuarioPublicoDe(item: UsuarioPublicoRow): UsuarioPublico {
+  return {
+    id: item.id,
+    nome: item.nome,
+    email: item.email,
+    celular: item.celular,
+    login: item.login,
+    papel: item.papel,
+    ativo: item.ativo,
+    origem: item.origem,
+    ocultarBoasVindas: item.ocultar_boas_vindas === true,
+  }
+}
+
+async function lerUsuariosPublicos(filtro: string) {
+  const semOcultar = COLUNAS_USUARIO.replace(',ocultar_boas_vindas', '')
+  try {
+    const linhas = await lerTabela<UsuarioPublicoRow>('usuarios', `select=${COLUNAS_USUARIO}&${filtro}`)
+    return linhas.map(usuarioPublicoDe)
+  } catch (erro) {
+    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
+    const linhas = await lerTabela<UsuarioPublicoRow>('usuarios', `select=${semOcultar}&${filtro}`)
+    return linhas.map(usuarioPublicoDe)
+  }
+}
+
+export async function buscarUsuarioPublicoPorId(id: string): Promise<UsuarioPublico | null> {
+  if (!idSeguro(id)) return null
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    const usuario = store.usuarios.find((item) => item.id === id)
+    return usuario ? publico(usuario) : null
+  }
+  const lista = await lerUsuariosPublicos(`id=eq.${id}&limit=1`)
+  return lista[0] ?? null
+}
+
+export async function listarUsuariosPublicos(): Promise<UsuarioPublico[]> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.usuarios.map(publico)
+  }
+  return lerUsuariosPublicos('order=login.asc')
+}
+
+export async function listarPedidos(): Promise<PedidoAcesso[]> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.pedidos
+  }
+  const linhas = await lerTabela<PedidoRow>(
+    'pedidos_acesso',
+    'select=id,nome,email,celular,criado_em,situacao,decidido_em,decidido_por&order=criado_em.asc',
+  )
+  return linhas.map(pedidoDe)
+}
+
+export async function buscarPedidoPorId(id: string): Promise<PedidoAcesso | null> {
+  if (!idSeguro(id)) return null
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.pedidos.find((item) => item.id === id) ?? null
+  }
+  const linhas = await lerTabela<PedidoRow>(
+    'pedidos_acesso',
+    `select=id,nome,email,celular,criado_em,situacao,decidido_em,decidido_por&id=eq.${id}&limit=1`,
+  )
+  return linhas[0] ? pedidoDe(linhas[0]) : null
+}
+
+function pedidoDe(item: PedidoRow): PedidoAcesso {
+  return {
+    id: item.id,
+    nome: item.nome,
+    email: item.email,
+    celular: item.celular,
+    criadoEm: item.criado_em,
+    situacao: item.situacao,
+    decididoEm: item.decidido_em,
+    decididoPor: item.decidido_por,
+  }
+}
+
+export async function listarLogs(): Promise<LogRegistro[]> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.logs
+  }
+  const linhas = await lerTabela<LogRow>(
+    'logs',
+    'select=id,em,nivel,evento,ator,mensagem,detalhe&order=em.desc&limit=400',
+  )
+  return linhas.reverse().map(logDe)
+}
+
+export async function listarAtoresComLogin(): Promise<Set<string>> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return new Set(
+      store.logs.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator as string),
+    )
+  }
+  const linhas = await lerTabela<{ evento: string; ator: string | null }>(
+    'logs',
+    'select=evento,ator&order=em.desc&limit=400',
+  )
+  return new Set(
+    linhas.filter((item) => item.evento === 'USER_LOGIN' && item.ator).map((item) => item.ator as string),
+  )
+}
+
+function logDe(item: LogRow): LogRegistro {
+  return {
+    id: item.id,
+    em: item.em,
+    nivel: item.nivel,
+    evento: item.evento,
+    ator: item.ator,
+    mensagem: item.mensagem,
+    detalhe: item.detalhe ?? {},
+  }
+}
+
+export async function buscarLinkPorToken(token: string): Promise<LinkAcesso | null> {
+  if (!tokenInformado(token)) return null
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return acharLink(store.links, token)
+  }
+  const hash = hashDoToken(token)
+  try {
+    const linhas = await lerTabela<LinkRow>(
+      'links_acesso',
+      `select=id,tipo,email,pedido_id,usuario_id,token_hash,criado_em,expira_em,usado_em&token_hash=eq.${hash}&limit=1`,
+    )
+    return linhas[0] ? linkDaLinha(linhas[0]) : null
+  } catch (erro) {
+    if (ehTabelaAusente(erro)) return null
+    throw erro
+  }
+}
+
+export async function listarEstadosEntrega(): Promise<EntregaEstadoRow[]> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.estados
+  }
+  return lerTabela<EntregaEstadoRow>('entrega_estados', 'select=entrega_id,status,posicao,atualizado_por,atualizado_em')
 }
 
 type UsuarioRow = {
