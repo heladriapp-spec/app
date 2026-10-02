@@ -1,7 +1,10 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth/guard'
+import { validarLogin, validarSenha } from '@/lib/auth/credencial'
+import { emitirLink } from '@/lib/auth/links'
 import { hashSenha } from '@/lib/auth/senha'
+import { enviarConfirmacao } from '@/lib/email/mensagem'
 import { alterarStore, registrarNo, type Papel } from '@/lib/operacao/store'
 import { alterarProjetos } from '@/lib/projetos/store'
 import { redirect, unstable_rethrow } from 'next/navigation'
@@ -11,37 +14,87 @@ function voltar(texto: string, ok = false): never {
   redirect(`/administracao?${chave}=${encodeURIComponent(texto)}`)
 }
 
+function avisoGravacao(erro: unknown) {
+  if (erro instanceof Error && erro.message.trim()) return erro.message
+  return 'Não foi possível gravar. Tente de novo.'
+}
+
+async function registrarFalha(ator: string, email: string, motivo: 'sem_remetente' | 'falha') {
+  await alterarStore((store) => {
+    registrarNo(store, {
+      nivel: 'alerta',
+      evento: 'EMAIL_FAILED',
+      ator,
+      mensagem:
+        motivo === 'sem_remetente'
+          ? `O e-mail para ${email} não saiu: o remetente não está configurado.`
+          : `O e-mail para ${email} não saiu.`,
+      detalhe: { email },
+    })
+  })
+}
+
 export async function decidirPedido(formData: FormData) {
   const admin = await requireAdmin()
   const id = String(formData.get('id') ?? '')
   const acao = String(formData.get('acao') ?? '')
   if (acao !== 'aprovar' && acao !== 'rejeitar') voltar('Ação inválida.')
 
-  const erro = await alterarStore((store) => {
-    const pedido = store.pedidos.find((item) => item.id === id)
-    if (!pedido || pedido.situacao !== 'pendente') return 'Pedido não está pendente.'
-    pedido.situacao = acao === 'aprovar' ? 'aprovado' : 'rejeitado'
-    pedido.decididoEm = new Date().toISOString()
-    pedido.decididoPor = admin.login
-    registrarNo(store, {
-      nivel: 'info',
-      evento: acao === 'aprovar' ? 'USER_APPROVED' : 'USER_REJECTED',
-      ator: admin.login,
-      mensagem:
-        acao === 'aprovar'
-          ? `${admin.login} aprovou o pedido de ${pedido.nome}. A conta nasce quando ele criar o usuário aqui.`
-          : `${admin.login} rejeitou o pedido de ${pedido.nome}.`,
-      detalhe: { email: pedido.email },
+  const convite = { email: '', nome: '', token: '' }
+  try {
+    const erro = await alterarStore((store) => {
+      const pedido = store.pedidos.find((item) => item.id === id)
+      if (!pedido || pedido.situacao !== 'pendente') return 'Pedido não está pendente.'
+      if (
+        acao === 'aprovar' &&
+        store.usuarios.some(
+          (item) => item.email != null && item.email.toLowerCase() === pedido.email,
+        )
+      ) {
+        return 'Este e-mail já tem conta.'
+      }
+      pedido.situacao = acao === 'aprovar' ? 'aprovado' : 'rejeitado'
+      pedido.decididoEm = new Date().toISOString()
+      pedido.decididoPor = admin.login
+      if (acao === 'aprovar') {
+        convite.email = pedido.email
+        convite.nome = pedido.nome
+        convite.token = emitirLink(store.links, {
+          tipo: 'confirmacao',
+          email: pedido.email,
+          pedidoId: pedido.id,
+          usuarioId: null,
+        })
+      }
+      registrarNo(store, {
+        nivel: 'info',
+        evento: acao === 'aprovar' ? 'USER_APPROVED' : 'USER_REJECTED',
+        ator: admin.login,
+        mensagem:
+          acao === 'aprovar'
+            ? `${admin.login} aprovou o pedido de ${pedido.nome}. O link de confirmação segue para o e-mail.`
+            : `${admin.login} rejeitou o pedido de ${pedido.nome}.`,
+        detalhe: { email: pedido.email },
+      })
+      return null
     })
-    return null
-  })
+    if (erro) voltar(erro)
+  } catch (error) {
+    unstable_rethrow(error)
+    voltar(avisoGravacao(error))
+  }
 
-  if (erro) voltar(erro)
+  if (!convite.token) voltar('Pedido rejeitado.', true)
+
+  const envio = await enviarConfirmacao(convite.email, convite.nome, convite.token)
+  if (envio.ok) {
+    voltar(`Pedido aprovado. O e-mail de confirmação saiu para ${convite.email}.`, true)
+  }
+  await registrarFalha(admin.login, convite.email, envio.motivo)
   voltar(
-    acao === 'aprovar'
-      ? 'Pedido aprovado. Nenhum e-mail saiu: não há remetente. A pessoa fica em Aguardando primeiro acesso.'
-      : 'Pedido rejeitado.',
-    true,
+    envio.motivo === 'sem_remetente'
+      ? 'Pedido aprovado. O e-mail não saiu: o remetente não está configurado. A mensagem não ficou retida.'
+      : 'Pedido aprovado. O e-mail não saiu. Reenvie a notificação quando o remetente responder.',
   )
 }
 
@@ -49,29 +102,45 @@ export async function reenviarNotificacao(formData: FormData) {
   const admin = await requireAdmin()
   const id = String(formData.get('id') ?? '')
 
-  const erro = await alterarStore((store) => {
-    const pedido = store.pedidos.find((item) => item.id === id)
-    if (!pedido || pedido.situacao !== 'aprovado') return 'Só dá para reenviar um pedido aprovado.'
-    const usuario = store.usuarios.find(
-      (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
-    )
-    const entrou =
-      usuario != null &&
-      store.logs.some((item) => item.evento === 'USER_LOGIN' && item.ator === usuario.login)
-    if (entrou) return 'Esta pessoa já fez o primeiro acesso.'
-    registrarNo(store, {
-      nivel: 'alerta',
-      evento: 'USER_NOTIFY_RESEND',
-      ator: admin.login,
-      mensagem: `${admin.login} tentou reenviar a confirmação para ${pedido.email}. Não há remetente, então nada saiu.`,
-      detalhe: { email: pedido.email },
+  const convite = { email: '', nome: '', token: '' }
+  try {
+    const erro = await alterarStore((store) => {
+      const pedido = store.pedidos.find((item) => item.id === id)
+      if (!pedido || pedido.situacao !== 'aprovado') return 'Só dá para reenviar um pedido aprovado.'
+      const usuario = store.usuarios.find(
+        (item) => item.email != null && item.email.toLowerCase() === pedido.email.toLowerCase(),
+      )
+      if (usuario) return 'A conta deste e-mail já existe. O reenvio não cria outra.'
+      convite.email = pedido.email
+      convite.nome = pedido.nome
+      convite.token = emitirLink(store.links, {
+        tipo: 'confirmacao',
+        email: pedido.email,
+        pedidoId: pedido.id,
+        usuarioId: null,
+      })
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'USER_NOTIFY_RESEND',
+        ator: admin.login,
+        mensagem: `${admin.login} reenviou a confirmação para ${pedido.email}.`,
+        detalhe: { email: pedido.email },
+      })
+      return null
     })
-    return null
-  })
+    if (erro) voltar(erro)
+  } catch (error) {
+    unstable_rethrow(error)
+    voltar(avisoGravacao(error))
+  }
 
-  if (erro) voltar(erro)
+  const envio = await enviarConfirmacao(convite.email, convite.nome, convite.token)
+  if (envio.ok) voltar(`Confirmação reenviada para ${convite.email}.`, true)
+  await registrarFalha(admin.login, convite.email, envio.motivo)
   voltar(
-    'Não reenviei. A aprovação não enviou e-mail: não há remetente ligado. A mensagem não chegou na caixa porque ela não partiu daqui.',
+    envio.motivo === 'sem_remetente'
+      ? 'Não reenviei. O remetente não está configurado. A mensagem não ficou retida.'
+      : 'Não reenviei. O remetente não respondeu. Tente de novo.',
   )
 }
 
@@ -117,17 +186,15 @@ export async function configurarUsuario(formData: FormData) {
 function senhaInformada(formData: FormData) {
   const senha = String(formData.get('senha') ?? '')
   const senha2 = String(formData.get('senha2') ?? '')
-  if (senha.length < 8) voltar('A senha precisa de ao menos 8 caracteres.')
-  if (senha !== senha2) voltar('A senha nova e a repetição não são iguais.')
+  const erro = validarSenha(senha, senha2)
+  if (erro) voltar(erro)
   return senha
 }
 
 function loginInformado(bruto: string) {
-  const login = bruto.trim().toLowerCase()
-  if (!/^[a-z0-9._-]{3,32}$/.test(login)) {
-    voltar('O usuário usa 3 a 32 caracteres: letras, números, ponto, _ ou -.')
-  }
-  return login
+  const resultado = validarLogin(bruto)
+  if (!resultado.ok) voltar(resultado.erro)
+  return resultado.login
 }
 
 export async function criarUsuario(formData: FormData) {

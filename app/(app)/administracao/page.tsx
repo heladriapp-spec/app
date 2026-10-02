@@ -106,8 +106,9 @@ export default async function AdministracaoPage({
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Aprovar só registra a decisão. Nenhum e-mail sai: não há remetente ligado. A conta, com
-          usuário e senha, é criada aqui.
+          Aprovar envia o link de confirmação para o e-mail do pedido. A pessoa escolhe usuário e
+          senha nesse link. Rejeitar não envia e-mail. A conta criada aqui continua valendo, sem
+          esperar o link.
         </p>
       </section>
 
@@ -130,22 +131,23 @@ export default async function AdministracaoPage({
                 <p className="mt-1 text-sm">
                   {usuario
                     ? `Conta ${usuario.login} criada, ainda sem entrar.`
-                    : 'Conta ainda não criada.'}{' '}
-                  Nenhum e-mail de confirmação foi enviado.
+                    : 'Aguardando a confirmação do e-mail. A conta nasce nesse link.'}
                 </p>
-                <form action={reenviarNotificacao} className="mt-2">
-                  <input type="hidden" name="id" value={pedido.id} />
-                  <Button type="submit" size="sm" variant="outline">
-                    Reenviar notificação
-                  </Button>
-                </form>
+                {usuario ? null : (
+                  <form action={reenviarNotificacao} className="mt-2">
+                    <input type="hidden" name="id" value={pedido.id} />
+                    <Button type="submit" size="sm" variant="outline">
+                      Reenviar notificação
+                    </Button>
+                  </form>
+                )}
               </li>
             ))}
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Reenviar não alcança a caixa enquanto o remetente não estiver ligado. A mensagem não
-          ficou retida em serviço nenhum: ela não partiu.
+          Reenviar manda outro link e invalida o anterior. Sem remetente configurado, nada sai e
+          a mensagem não fica retida.
         </p>
       </section>
 

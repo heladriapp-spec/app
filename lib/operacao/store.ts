@@ -1,6 +1,7 @@
+import type { LinkAcesso, TipoLink } from '@/lib/auth/links'
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { hashSenha } from '@/lib/auth/senha'
-import { apagarFora, gravarTabela, lerTabela, supabaseConfigurado } from '@/lib/supabase/nuvem'
+import { apagarFora, ehTabelaAusente, gravarTabela, lerTabela, supabaseConfigurado } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -48,6 +49,7 @@ export type LogRegistro = {
 type Store = {
   usuarios: Usuario[]
   pedidos: PedidoAcesso[]
+  links: LinkAcesso[]
   estados: EntregaEstadoRow[]
   logs: LogRegistro[]
 }
@@ -84,9 +86,15 @@ function semear(): Store {
       },
     ],
     pedidos: [],
+    links: [],
     estados: [],
     logs: [],
   }
+}
+
+function completar(store: Store): Store {
+  if (!Array.isArray(store.links)) store.links = []
+  return store
 }
 
 async function lerDisco(): Promise<Store | null> {
@@ -133,7 +141,9 @@ export function registrarNo(
 
 export async function alterarStore<T>(fn: (store: Store) => T): Promise<T> {
   const exec = fila.then(async () => {
-    const store = supabaseConfigurado() ? await lerNuvem() : ((await lerDisco()) ?? semear())
+    const store = supabaseConfigurado()
+      ? await lerNuvem()
+      : completar((await lerDisco()) ?? semear())
     const resultado = fn(store)
     if (supabaseConfigurado()) await gravarNuvem(store)
     else await gravarDisco(store)
@@ -149,7 +159,7 @@ export async function alterarStore<T>(fn: (store: Store) => T): Promise<T> {
 export async function lerStore() {
   if (supabaseConfigurado()) return lerNuvem()
   const atual = await lerDisco()
-  if (atual) return atual
+  if (atual) return completar(atual)
   return alterarStore((store) => store)
 }
 
@@ -176,6 +186,18 @@ type PedidoRow = {
   decidido_por: string | null
 }
 
+type LinkRow = {
+  id: string
+  tipo: TipoLink
+  email: string
+  pedido_id: string | null
+  usuario_id: string | null
+  token_hash: string
+  criado_em: string
+  expira_em: string
+  usado_em: string | null
+}
+
 type LogRow = {
   id: string
   em: string
@@ -187,11 +209,12 @@ type LogRow = {
 }
 
 async function lerNuvem(): Promise<Store> {
-  const [usuarios, pedidos, estados, logs] = await Promise.all([
+  const [usuarios, pedidos, estados, logs, links] = await Promise.all([
     lerTabela<UsuarioRow>('usuarios', 'select=*&order=login.asc'),
     lerTabela<PedidoRow>('pedidos_acesso', 'select=*&order=criado_em.asc'),
     lerTabela<EntregaEstadoRow>('entrega_estados', 'select=*'),
     lerTabela<LogRow>('logs', 'select=*&order=em.desc&limit=400'),
+    lerLinks(),
   ])
   if (usuarios.length === 0) {
     const vazio = semear()
@@ -220,6 +243,7 @@ async function lerNuvem(): Promise<Store> {
       decididoEm: item.decidido_em,
       decididoPor: item.decidido_por,
     })),
+    links,
     estados,
     logs: logs.reverse().map((item) => ({
       id: item.id,
@@ -238,6 +262,7 @@ async function gravarNuvem(store: Store) {
   if (!temAdmin) {
     throw new Error('A gravação foi recusada: ficaria sem administrador ativo.')
   }
+  await gravarLinks(store.links)
   await gravarTabela(
     'usuarios',
     store.usuarios.map((item) => ({
@@ -298,4 +323,59 @@ async function gravarNuvem(store: Store) {
     'id',
     store.logs.map((item) => item.id),
   )
+}
+
+async function lerLinks() {
+  try {
+    const linhas = await lerTabela<LinkRow>('links_acesso', 'select=*')
+    return linhas.map(linkDaLinha)
+  } catch (erro) {
+    if (ehTabelaAusente(erro)) return []
+    throw erro
+  }
+}
+
+function linkDaLinha(item: LinkRow): LinkAcesso {
+  return {
+    id: item.id,
+    tipo: item.tipo,
+    email: item.email,
+    pedidoId: item.pedido_id,
+    usuarioId: item.usuario_id,
+    tokenHash: item.token_hash,
+    criadoEm: item.criado_em,
+    expiraEm: item.expira_em,
+    usadoEm: item.usado_em,
+  }
+}
+
+async function gravarLinks(links: LinkAcesso[]) {
+  try {
+    if (links.length === 0) {
+      await apagarFora('links_acesso', 'id', [])
+      return
+    }
+    await gravarTabela(
+      'links_acesso',
+      links.map((item) => ({
+        id: item.id,
+        tipo: item.tipo,
+        email: item.email,
+        pedido_id: item.pedidoId,
+        usuario_id: item.usuarioId,
+        token_hash: item.tokenHash,
+        criado_em: item.criadoEm,
+        expira_em: item.expiraEm,
+        usado_em: item.usadoEm,
+      })),
+    )
+    await apagarFora(
+      'links_acesso',
+      'id',
+      links.map((item) => item.id),
+    )
+  } catch (erro) {
+    if (ehTabelaAusente(erro) && links.length === 0) return
+    throw erro
+  }
 }

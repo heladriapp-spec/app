@@ -166,6 +166,11 @@ function codigoDe(erro: unknown) {
   return typeof codigo === 'string' ? codigo : ''
 }
 
+export function ehTabelaAusente(erro: unknown) {
+  if (codigoDe(erro) === 'PGRST205') return true
+  return erro instanceof Error && erro.message.includes('ainda não tem a tabela')
+}
+
 async function falha(resposta: Response) {
   const texto = await resposta.text().catch(() => '')
   let codigo = ''

@@ -15,8 +15,8 @@ export default async function PedirAcessoPage({
   return (
     <AuthShell titulo="Pedir acesso">
       <p className="text-sm text-muted-foreground">
-        Nome, e-mail e celular. Usuário e senha entram na confirmação, quando o remetente de
-        e-mail estiver na esteira. Até lá o administrador só registra a decisão.
+        Nome, e-mail e celular. Usuário e senha entram no link de confirmação, depois que o
+        administrador aprovar. Até lá o pedido fica pendente.
       </p>
       {ok ? (
         <p className="rounded-lg border px-3 py-2 text-sm">

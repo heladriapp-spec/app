@@ -10,10 +10,10 @@ import { redirect } from 'next/navigation'
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erro?: string }>
+  searchParams: Promise<{ erro?: string; ok?: string }>
 }) {
   if (await usuarioDaSessao()) redirect('/')
-  const { erro } = await searchParams
+  const { erro, ok } = await searchParams
 
   return (
     <AuthShell titulo="Entrar">
@@ -21,6 +21,7 @@ export default async function LoginPage({
         A operação (usuários, versão, esteira, logs e saúde) fica com o administrador. O
         lançamento na planilha fica com quem ele incluir.
       </p>
+      {ok ? <p className="rounded-lg border px-3 py-2 text-sm">{ok}</p> : null}
       {erro ? (
         <p
           role="alert"

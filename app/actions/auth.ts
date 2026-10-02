@@ -1,7 +1,11 @@
 'use server'
 
-import { confereSenha } from '@/lib/auth/senha'
+import { validarLogin, validarSenha } from '@/lib/auth/credencial'
 import { gravarSessao, limparSessao, usuarioDaSessao } from '@/lib/auth/guard'
+import { acharLink, emitirLink, linkRecente, motivoDoLink, tokenInformado } from '@/lib/auth/links'
+import { confereSenha, hashSenha } from '@/lib/auth/senha'
+import { enviarRecuperacao } from '@/lib/email/mensagem'
+import { remetenteConfigurado } from '@/lib/email/smtp'
 import { alterarStore, registrarNo } from '@/lib/operacao/store'
 import { redirect, unstable_rethrow } from 'next/navigation'
 
@@ -135,14 +139,142 @@ export async function esqueciSenha(formData: FormData) {
   if (!email.includes('@')) {
     redirect(`/esqueci-senha?erro=${encodeURIComponent('Informe o e-mail da conta.')}`)
   }
-  await alterarStore((store) => {
-    registrarNo(store, {
-      nivel: 'info',
-      evento: 'PASSWORD_RECOVERY_REQUESTED',
-      ator: null,
-      mensagem: 'Alguém pediu recuperação de senha.',
-      detalhe: { email },
+  if (!remetenteConfigurado()) {
+    redirect(
+      `/esqueci-senha?erro=${encodeURIComponent('O remetente não está configurado. Nada foi enviado.')}`,
+    )
+  }
+
+  let token = ''
+  try {
+    await alterarStore((store) => {
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'PASSWORD_RECOVERY_REQUESTED',
+        ator: null,
+        mensagem: 'Alguém pediu recuperação de senha.',
+        detalhe: { email },
+      })
+      const usuario = store.usuarios.find((item) => item.email === email && item.ativo)
+      if (!usuario || linkRecente(store.links, 'senha', email)) return
+      token = emitirLink(store.links, {
+        tipo: 'senha',
+        email,
+        pedidoId: null,
+        usuarioId: usuario.id,
+      })
     })
-  })
+  } catch (error) {
+    unstable_rethrow(error)
+    redirect('/esqueci-senha?ok=1')
+  }
+
+  if (token) {
+    const envio = await enviarRecuperacao(email, token)
+    if (!envio.ok) {
+      await alterarStore((store) => {
+        registrarNo(store, {
+          nivel: 'alerta',
+          evento: 'EMAIL_FAILED',
+          ator: null,
+          mensagem: `O e-mail de senha para ${email} não saiu.`,
+          detalhe: { email },
+        })
+      })
+    }
+  }
   redirect('/esqueci-senha?ok=1')
+}
+
+export async function confirmarAcesso(formData: FormData) {
+  const token = tokenInformado(String(formData.get('token') ?? ''))
+  if (!token) redirect('/login?erro=' + encodeURIComponent('Este link não vale.'))
+  const destino = `/confirmar/${token}`
+  const login = validarLogin(String(formData.get('login') ?? ''))
+  if (!login.ok) redirect(`${destino}?erro=${encodeURIComponent(login.erro)}`)
+  const senha = String(formData.get('senha') ?? '')
+  const senhaErro = validarSenha(senha, String(formData.get('senha2') ?? ''))
+  if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
+
+  let usuarioId = ''
+  try {
+    const erro = await alterarStore((store) => {
+      const link = acharLink(store.links, token)
+      const motivo = motivoDoLink(link, 'confirmacao')
+      if (motivo || !link) return motivo ?? 'Este link não vale.'
+      const pedido = store.pedidos.find((item) => item.id === link.pedidoId)
+      if (!pedido || pedido.situacao !== 'aprovado') return 'Este pedido não está aprovado.'
+      if (store.usuarios.some((item) => item.login === login.login)) return 'Este usuário já existe.'
+      if (store.usuarios.some((item) => item.email === link.email)) return 'Este e-mail já tem conta.'
+      usuarioId = crypto.randomUUID()
+      store.usuarios.push({
+        id: usuarioId,
+        nome: pedido.nome,
+        email: link.email,
+        celular: pedido.celular,
+        login: login.login,
+        senhaHash: hashSenha(senha),
+        papel: 'comum',
+        ativo: true,
+        origem: 'pedido',
+      })
+      link.usadoEm = new Date().toISOString()
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'USER_CONFIRMED',
+        ator: login.login,
+        mensagem: `${login.login} confirmou o acesso.`,
+        detalhe: { email: link.email },
+      })
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'USER_LOGIN',
+        ator: login.login,
+        mensagem: `${login.login} entrou.`,
+        detalhe: { papel: 'comum' },
+      })
+      return null
+    })
+    if (erro) redirect(`${destino}?erro=${encodeURIComponent(erro)}`)
+  } catch (error) {
+    unstable_rethrow(error)
+    redirect(`${destino}?erro=${encodeURIComponent('Não foi possível confirmar agora. Tente de novo.')}`)
+  }
+
+  await gravarSessao(usuarioId)
+  redirect('/')
+}
+
+export async function definirSenhaNova(formData: FormData) {
+  const token = tokenInformado(String(formData.get('token') ?? ''))
+  if (!token) redirect('/esqueci-senha?erro=' + encodeURIComponent('Este link não vale.'))
+  const destino = `/nova-senha/${token}`
+  const senha = String(formData.get('senha') ?? '')
+  const senhaErro = validarSenha(senha, String(formData.get('senha2') ?? ''))
+  if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
+
+  try {
+    const erro = await alterarStore((store) => {
+      const link = acharLink(store.links, token)
+      const motivo = motivoDoLink(link, 'senha')
+      if (motivo || !link) return motivo ?? 'Este link não vale.'
+      const usuario = store.usuarios.find((item) => item.id === link.usuarioId && item.email === link.email)
+      if (!usuario || !usuario.ativo) return 'Esta conta não pode trocar a senha por este link.'
+      usuario.senhaHash = hashSenha(senha)
+      link.usadoEm = new Date().toISOString()
+      registrarNo(store, {
+        nivel: 'info',
+        evento: 'USER_PASSWORD_CHANGED',
+        ator: usuario.login,
+        mensagem: `${usuario.login} definiu uma senha nova pelo link.`,
+        detalhe: { login: usuario.login },
+      })
+      return null
+    })
+    if (erro) redirect(`${destino}?erro=${encodeURIComponent(erro)}`)
+  } catch (error) {
+    unstable_rethrow(error)
+    redirect(`${destino}?erro=${encodeURIComponent('Não foi possível gravar a senha. Tente de novo.')}`)
+  }
+  redirect(`/login?ok=${encodeURIComponent('Senha definida. Entre com a senha nova.')}`)
 }

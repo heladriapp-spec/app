@@ -15,12 +15,12 @@ export default async function EsqueciSenhaPage({
   return (
     <AuthShell titulo="Esqueci a senha">
       <p className="text-sm text-muted-foreground">
-        O link de uso único sai quando o remetente de e-mail estiver na esteira. A senha atual
-        não é enviada. Contas da instalação, sem e-mail, não usam este caminho.
+        Informe o e-mail da conta. Se ele existir, sai um link de uso único para definir a senha
+        nova. A senha atual não é enviada. Contas da instalação, sem e-mail, não usam este caminho.
       </p>
       {ok ? (
         <p className="rounded-lg border px-3 py-2 text-sm">
-          Se a conta tiver e-mail, o link será enviado nessa entrega. Nada foi enviado agora.
+          Se este e-mail estiver em uma conta, enviamos o link para definir a senha nova.
         </p>
       ) : null}
       {erro ? <p className="text-sm text-destructive">{erro}</p> : null}

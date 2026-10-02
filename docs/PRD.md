@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.6.0, publicada. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Excluir linha, histórico de versões e o remetente de e-mail continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.7.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. A publicação no ar segue em 0.6.0 até o próximo deploy. Excluir linha e o histórico de versões continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -117,7 +117,7 @@ Visível só para o administrador:
 - Criar usuário com login e senha, sem esperar o e-mail de confirmação. E-mail e celular podem ficar em branco.
 - Editar nome, celular e papel.
 - Definir uma senha nova para um usuário existente. A senha anterior deixa de valer. A senha não fica visível.
-- Ver quem foi aprovado e ainda não fez o primeiro acesso. Reenviar a notificação de confirmação. Enquanto o remetente não estiver ligado, o reenvio registra a tentativa e avisa que nada saiu: a mensagem não ficou retida em serviço nenhum.
+- Ver quem foi aprovado e ainda não fez o primeiro acesso. Reenviar a notificação de confirmação. O reenvio manda outro link e invalida o anterior. Sem o remetente configurado, o reenvio registra a tentativa e avisa que nada saiu: a mensagem não ficou retida em serviço nenhum.
 - Excluir usuário. Ele deixa de entrar. O histórico do que ele fez permanece. Quem está na própria conta não se exclui. O único administrador ativo não é excluído nem desativado.
 - Desativar usuário. Desativado não entra. Não apagar histórico do que ele fez. O `adm` da instalação não é desativado enquanto for o único administrador.
 
@@ -294,7 +294,7 @@ Um único projeto Supabase na nuvem serve o desenvolvimento e a primeira publica
 
 Usuários, pedidos de acesso, projetos, participantes, versões e o arquivo de origem persistem nesse Supabase. A autenticação continua regra da aplicação: usuário e senha, os dois papéis, aprovação do administrador, links de uso único e senha que não volta por e-mail. Os dados dessa regra ficam no Supabase. Não se adota um produto de login da Vercel.
 
-O envio do e-mail de confirmação e o de recuperação de senha ainda não têm remetente escolhido. Esse remetente não é um add-on da Vercel. A escolha entra nos próximos passos, desde que o e-mail cumpra o que as seções 6 e 8 já pedem.
+O e-mail de confirmação e o de recuperação de senha saem por SMTP, configurado nas variáveis de ambiente (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SEGURO`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`). O endereço do link usa `APP_URL` quando existe; senão, o host do pedido. Esse remetente não é um add-on da Vercel. Sem essas variáveis, nada é enviado e a mensagem não fica retida. O banco guarda só o hash do link, por 24 horas, de uso único. A senha não volta no e-mail.
 
 ### 9.2 Desenvolvimento local
 
@@ -396,12 +396,12 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Repositório Git só do Heladri | 0.7.0 | Remoto `heladriapp-spec/app`, efetivo nesta 0.6.0 |
 | Supabase | 0.8.0 | Postgres e Storage quando a chave existe; pasta local quando não existe. Efetivo nesta 0.6.0 |
 | Publicação na Vercel | 0.10.0 | Sai do Git, sem banco da Vercel. Efetivo nesta 0.6.0 |
+| Remetente de confirmação e de senha | 0.9.0 | Link de uso único na aprovação e no esqueci a senha, por SMTP. Efetivo nesta 0.7.0 |
 
 ### Ainda na fila
 
-1. Remetente de confirmação e de senha. Aprovar pedido e esqueci a senha já existem na tela; o e-mail não sai.
-2. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
-3. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
+2. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 

@@ -1,5 +1,6 @@
 import { CATALOGO_ENTREGAS } from '@/lib/entregas/catalogo'
 import type { CheckResultado, RelatorioSaude, ResumoEixo, StatusSaude } from '@/lib/saude/tipos'
+import { remetenteConfigurado } from '@/lib/email/smtp'
 import { pingUsuarios, supabaseConfigurado } from '@/lib/supabase/nuvem'
 import { VERSAO_APP, VERSAO_SEMVER, ambienteAtual, shaDoBuild } from '@/lib/versao'
 import { access, readFile, readdir } from 'node:fs/promises'
@@ -287,6 +288,26 @@ async function checkPerformance(): Promise<CheckResultado> {
   )
 }
 
+async function checkRemetente(): Promise<CheckResultado> {
+  const inicio = Date.now()
+  const nomes = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'] as const
+  const ausentes = nomes.filter((nome) => !process.env[nome]?.trim())
+  return medir(
+    {
+      id: 'remetente',
+      nome: 'Remetente de e-mail',
+      grupo: 'ambiente',
+      status: remetenteConfigurado() ? 'ok' : 'alerta',
+      criticidade: 'nao_critico',
+      mensagem: remetenteConfigurado()
+        ? 'O remetente SMTP está configurado. A senha não aparece aqui.'
+        : `Ainda sem ${ausentes.join(', ')}. Confirmação e senha não saem enquanto isso.`,
+      detalhe: null,
+    },
+    inicio,
+  )
+}
+
 async function checkPlanilha(): Promise<CheckResultado> {
   const inicio = Date.now()
   const nomes = await readdir(process.cwd())
@@ -319,6 +340,7 @@ export async function montarRelatorioSaude(): Promise<RelatorioSaude> {
     checkSupabase(),
     checkMemoria(),
     checkPerformance(),
+    checkRemetente(),
     checkPlanilha(),
   ])
   return {
