@@ -1,5 +1,4 @@
 import { criarProjeto } from '@/app/actions/projetos'
-import { BotaoRascunho } from '@/components/botao-rascunho'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { FormPlanilha } from '@/components/form-planilha'
 import { Recado } from '@/components/recado'
@@ -22,9 +21,8 @@ export default async function NovoProjetoPage({
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-8">
       <CabecalhoPagina titulo="Criar novo projeto" icone={FolderPlus}>
-        Nome e data identificam o trabalho. A planilha do SESC, se entrar agora, fica amarrada a
-        este projeto como arquivo referencial. Dá para salvar em rascunho e concluir depois. O
-        memorial descritivo é outro documento e não entra neste formulário.
+        Nome e data identificam o trabalho. A planilha do SESC entra agora e fica amarrada a este
+        projeto. O memorial descritivo é outro documento e não entra neste formulário.
       </CabecalhoPagina>
       {erro ? <Recado tom="erro">{erro}</Recado> : null}
       <FormPlanilha action={criarProjeto} className="grid gap-4">
@@ -42,15 +40,15 @@ export default async function NovoProjetoPage({
             id="arquivo"
             name="arquivo"
             type="file"
+            required
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           />
           <p className="text-xs text-muted-foreground">
-            Opcional, até 4 MB. O arquivo .xlsx fica guardado com o projeto e é a base da planilha
-            gerada na conclusão.
+            Obrigatória, até 4 MB. O arquivo .xlsx fica guardado com o projeto. Se a leitura falhar,
+            o projeto não é criado.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <BotaoRascunho />
           <Button type="submit" name="acao" value="criar">
             <Plus data-icon="inline-start" />
             Criar projeto

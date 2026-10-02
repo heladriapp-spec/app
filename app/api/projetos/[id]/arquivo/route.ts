@@ -1,4 +1,5 @@
 import { usuarioDaSessao } from '@/lib/auth/guard'
+import { pode } from '@/lib/projetos/acesso'
 import { lerArquivoDoProjeto, lerArquivoGerado, nomeDeDownload, projetoParaArquivo } from '@/lib/projetos/store'
 
 export async function GET(pedido: Request, contexto: { params: Promise<{ id: string }> }) {
@@ -9,11 +10,19 @@ export async function GET(pedido: Request, contexto: { params: Promise<{ id: str
 
   const projeto = await projetoParaArquivo(id)
   if (!projeto) return texto('Projeto não encontrado.', 404)
-  const participa = usuario.papel === 'administrador' || projeto.participantes.includes(usuario.id)
-  if (!participa) return texto('Este projeto não está com você.', 403)
+  if (!pode(usuario, projeto, 'ver')) return texto('Este projeto não está com você.', 403)
 
   const papel = new URL(pedido.url).searchParams.get('papel')
   if (papel !== 'origem' && papel !== 'gerado') return texto('Arquivo não encontrado.', 404)
+  const acao = papel === 'origem' ? 'baixar_origem' : 'baixar_gerado'
+  if (!pode(usuario, projeto, acao)) {
+    return texto(
+      papel === 'gerado'
+        ? 'Baixar o resultado não está disponível nesta etapa.'
+        : 'Este arquivo não está disponível nesta etapa.',
+      403,
+    )
+  }
 
   const guardado = papel === 'origem' ? projeto.arquivoNome : projeto.arquivoGeradoNome
   if (!guardado) return texto('Este projeto ainda não tem esse arquivo.', 404)

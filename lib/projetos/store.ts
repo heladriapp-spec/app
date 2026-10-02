@@ -1,7 +1,15 @@
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { canonizarStatus, opcoesStatus } from '@/lib/planilha/status'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
-import type { ExtraServico, Lancamento, Projeto, ProjetoLista, StatusProjeto } from '@/lib/projetos/tipos'
+import { apagarEventosLocais } from '@/lib/projetos/eventos'
+import {
+  statusCanonico,
+  type ExtraServico,
+  type Lancamento,
+  type Projeto,
+  type ProjetoLista,
+  type StatusProjeto,
+} from '@/lib/projetos/tipos'
 import {
   apagarOnde,
   atualizarOnde,
@@ -44,8 +52,12 @@ type ProjetoRow = {
   arquivo_gerado_nome: string | null
   concluido_em: string | null
   concluido_por: string | null
+  responsavel_id?: string | null
+  responsavel_em?: string | null
+  submetido_em?: string | null
+  previa_liberada?: boolean | null
   capa: CapaPlanilha | null
-  status: StatusProjeto
+  status: string
   lancamentos: Record<string, Lancamento> | null
 }
 
@@ -57,23 +69,12 @@ async function lerNuvem(): Promise<Projeto[]> {
       'select=projeto_id,usuario_id',
     ),
   ])
-  return linhas.map((item) => ({
-    id: item.id,
-    nome: item.nome,
-    data: String(item.data).slice(0, 10),
-    criadoEm: item.criado_em,
-    criadoPor: item.criado_por,
-    atualizadoEm: item.atualizado_em,
-    atualizadoPor: item.atualizado_por,
-    participantes: vinculos.filter((vinculo) => vinculo.projeto_id === item.id).map((vinculo) => vinculo.usuario_id),
-    arquivoNome: item.arquivo_nome,
-    arquivoGeradoNome: item.arquivo_gerado_nome,
-    concluidoEm: item.concluido_em,
-    concluidoPor: item.concluido_por,
-    capa: item.capa,
-    status: item.status,
-    lancamentos: item.lancamentos ?? {},
-  }))
+  return linhas.map((item) =>
+    projetoDeLinha(
+      item,
+      vinculos.filter((vinculo) => vinculo.projeto_id === item.id).map((vinculo) => vinculo.usuario_id),
+    ),
+  )
 }
 
 async function gravarIndice(projetos: Projeto[]) {
@@ -113,6 +114,13 @@ export class ProjetoDesatualizado extends Error {
   }
 }
 
+export class TransicaoRecusada extends Error {
+  constructor(mensagem = 'Este projeto já foi enviado.') {
+    super(mensagem)
+    this.name = 'TransicaoRecusada'
+  }
+}
+
 export type PatchProjeto = Partial<
   Pick<
     Projeto,
@@ -123,6 +131,10 @@ export type PatchProjeto = Partial<
     | 'arquivoGeradoNome'
     | 'concluidoEm'
     | 'concluidoPor'
+    | 'responsavelId'
+    | 'responsavelEm'
+    | 'submetidoEm'
+    | 'previaLiberada'
     | 'capa'
     | 'status'
     | 'lancamentos'
@@ -143,6 +155,10 @@ function linhaDe(projeto: Projeto) {
     arquivo_gerado_nome: projeto.arquivoGeradoNome,
     concluido_em: projeto.concluidoEm,
     concluido_por: projeto.concluidoPor,
+    responsavel_id: projeto.responsavelId,
+    responsavel_em: projeto.responsavelEm,
+    submetido_em: projeto.submetidoEm,
+    previa_liberada: projeto.previaLiberada,
     capa: projeto.capa,
     status: projeto.status,
     lancamentos: projeto.lancamentos,
@@ -157,6 +173,10 @@ function aplicarPatch(atual: Projeto, patch: PatchProjeto, agora: string) {
   if (patch.arquivoGeradoNome !== undefined) atual.arquivoGeradoNome = patch.arquivoGeradoNome
   if (patch.concluidoEm !== undefined) atual.concluidoEm = patch.concluidoEm
   if (patch.concluidoPor !== undefined) atual.concluidoPor = patch.concluidoPor
+  if (patch.responsavelId !== undefined) atual.responsavelId = patch.responsavelId
+  if (patch.responsavelEm !== undefined) atual.responsavelEm = patch.responsavelEm
+  if (patch.submetidoEm !== undefined) atual.submetidoEm = patch.submetidoEm
+  if (patch.previaLiberada !== undefined) atual.previaLiberada = patch.previaLiberada
   if (patch.capa !== undefined) atual.capa = patch.capa
   if (patch.status !== undefined) atual.status = patch.status
   if (patch.lancamentos !== undefined) atual.lancamentos = patch.lancamentos
@@ -175,6 +195,10 @@ function corpoDoPatch(id: string, patch: PatchProjeto, agora: string) {
   if (patch.arquivoGeradoNome !== undefined) corpo.arquivo_gerado_nome = patch.arquivoGeradoNome
   if (patch.concluidoEm !== undefined) corpo.concluido_em = patch.concluidoEm
   if (patch.concluidoPor !== undefined) corpo.concluido_por = patch.concluidoPor
+  if (patch.responsavelId !== undefined) corpo.responsavel_id = patch.responsavelId
+  if (patch.responsavelEm !== undefined) corpo.responsavel_em = patch.responsavelEm
+  if (patch.submetidoEm !== undefined) corpo.submetido_em = patch.submetidoEm
+  if (patch.previaLiberada !== undefined) corpo.previa_liberada = patch.previaLiberada
   if (patch.capa !== undefined) corpo.capa = patch.capa
   if (patch.status !== undefined) corpo.status = patch.status
   if (patch.lancamentos !== undefined) corpo.lancamentos = patch.lancamentos
@@ -222,27 +246,38 @@ export async function inserirProjeto(projeto: Projeto) {
  * Grava só esta linha. `vistoEm` é o `atualizado_em` lido antes, sem reformatar.
  * Devolve o valor que o banco gravou. Zero linhas com o projeto ainda lá é conflito.
  */
-export async function gravarProjeto(id: string, vistoEm: string, patch: PatchProjeto): Promise<string> {
+export async function gravarProjeto(
+  id: string,
+  vistoEm: string,
+  patch: PatchProjeto,
+  esperado?: { status?: StatusProjeto },
+): Promise<string> {
   if (!idSeguro(id) || !vistoEm) throw new Error('Projeto não encontrado.')
   const agora = new Date().toISOString()
   if (!supabaseConfigurado()) {
     return alterarIndice((projetos) => {
       const atual = projetos.find((item) => item.id === id)
       if (!atual) throw new Error('Projeto não encontrado.')
+      if (esperado?.status && atual.status !== esperado.status) throw new TransicaoRecusada()
       if (atual.atualizadoEm !== vistoEm) throw new ProjetoDesatualizado()
       aplicarPatch(atual, patch, agora)
       return agora
     })
   }
+  const filtroStatus = esperado?.status ? `&status=eq.${esperado.status}` : ''
   const linhas = await atualizarOnde<{ atualizado_em: string }>(
     'projetos',
-    `id=eq.${id}&atualizado_em=eq.${encodeURIComponent(vistoEm)}&select=atualizado_em`,
+    `id=eq.${id}&atualizado_em=eq.${encodeURIComponent(vistoEm)}${filtroStatus}&select=atualizado_em`,
     corpoDoPatch(id, patch, agora),
   )
   const gravado = linhas[0]?.atualizado_em
   if (gravado) return gravado
-  const existe = await lerTabela<{ id: string }>('projetos', `select=id&id=eq.${id}&limit=1`)
+  const existe = await lerTabela<{ id: string; status: string }>(
+    'projetos',
+    `select=id,status&id=eq.${id}&limit=1`,
+  )
   if (existe.length === 0) throw new Error('Projeto não encontrado.')
+  if (esperado?.status && statusCanonico(existe[0].status) !== esperado.status) throw new TransicaoRecusada()
   throw new ProjetoDesatualizado()
 }
 
@@ -253,6 +288,7 @@ export async function apagarProjeto(id: string) {
       const indice = projetos.findIndex((item) => item.id === id)
       if (indice >= 0) projetos.splice(indice, 1)
     })
+    await apagarEventosLocais(id)
     return
   }
   await apagarOnde('projetos', `id=eq.${id}`)
@@ -260,7 +296,9 @@ export async function apagarProjeto(id: string) {
 
 const COLUNAS_LISTA = 'id,nome,data,status,criado_por,atualizado_em,atualizado_por,arquivo_nome'
 const COLUNAS_PROJETO =
-  'id,nome,data,criado_em,criado_por,atualizado_em,atualizado_por,arquivo_nome,arquivo_gerado_nome,concluido_em,concluido_por,capa,status,lancamentos'
+  'id,nome,data,criado_em,criado_por,atualizado_em,atualizado_por,arquivo_nome,arquivo_gerado_nome,concluido_em,concluido_por,responsavel_id,responsavel_em,submetido_em,previa_liberada,capa,status,lancamentos'
+const COLUNAS_SEM_VALORES =
+  'id,nome,data,criado_em,criado_por,atualizado_em,atualizado_por,arquivo_nome,arquivo_gerado_nome,concluido_em,concluido_por,responsavel_id,responsavel_em,submetido_em,previa_liberada,capa,status'
 
 function idSeguro(id: string) {
   return /^[\w-]+$/.test(id)
@@ -286,7 +324,7 @@ function resumoDaLinha(
     id: item.id,
     nome: item.nome,
     data: String(item.data).slice(0, 10),
-    status: item.status,
+    status: statusCanonico(item.status),
     criadoPor: item.criado_por,
     atualizadoEm: item.atualizado_em,
     atualizadoPor: item.atualizado_por,
@@ -322,7 +360,7 @@ export async function listarProjetos(usuario: { id: string; papel: string }): Pr
   return linhas.map(resumoDaLinha)
 }
 
-const COLUNAS_ARQUIVO = 'id,arquivo_nome,arquivo_gerado_nome'
+const COLUNAS_ARQUIVO = 'id,criado_por,status,arquivo_nome,arquivo_gerado_nome'
 
 export async function projetoParaArquivo(id: string) {
   if (!idSeguro(id)) return null
@@ -331,13 +369,15 @@ export async function projetoParaArquivo(id: string) {
     if (!projeto) return null
     return {
       id: projeto.id,
+      criadoPor: projeto.criadoPor,
+      status: projeto.status,
       participantes: projeto.participantes,
       arquivoNome: projeto.arquivoNome,
       arquivoGeradoNome: projeto.arquivoGeradoNome,
     }
   }
   const [linhas, vinculos] = await Promise.all([
-    lerTabela<Pick<ProjetoRow, 'id' | 'arquivo_nome' | 'arquivo_gerado_nome'>>(
+    lerTabela<Pick<ProjetoRow, 'id' | 'criado_por' | 'status' | 'arquivo_nome' | 'arquivo_gerado_nome'>>(
       'projetos',
       `select=${COLUNAS_ARQUIVO}&id=eq.${id}&limit=1`,
     ),
@@ -347,41 +387,37 @@ export async function projetoParaArquivo(id: string) {
   if (!item) return null
   return {
     id: item.id,
+    criadoPor: item.criado_por,
+    status: statusCanonico(item.status),
     participantes: vinculos.map((vinculo) => vinculo.usuario_id),
     arquivoNome: item.arquivo_nome,
     arquivoGeradoNome: item.arquivo_gerado_nome,
   }
 }
 
-export async function projetoPorId(id: string) {
+export async function projetoPorId(id: string, opcoes?: { valores?: boolean }) {
   if (!idSeguro(id)) return null
+  const comValores = opcoes?.valores !== false
   if (!supabaseConfigurado()) {
     const projetos = await lerIndice()
-    return projetos.find((item) => item.id === id) ?? null
+    const projeto = projetos.find((item) => item.id === id) ?? null
+    if (!projeto || comValores) return projeto
+    return { ...projeto, lancamentos: {} }
   }
   const [linhas, vinculos] = await Promise.all([
-    lerTabela<ProjetoRow>('projetos', `select=${COLUNAS_PROJETO}&id=eq.${id}&limit=1`),
+    lerTabela<ProjetoRow>(
+      'projetos',
+      `select=${comValores ? COLUNAS_PROJETO : COLUNAS_SEM_VALORES}&id=eq.${id}&limit=1`,
+    ),
     lerTabela<{ usuario_id: string }>('projeto_participantes', `select=usuario_id&projeto_id=eq.${id}`),
   ])
   const item = linhas[0]
   if (!item) return null
-  return {
-    id: item.id,
-    nome: item.nome,
-    data: String(item.data).slice(0, 10),
-    criadoEm: item.criado_em,
-    criadoPor: item.criado_por,
-    atualizadoEm: item.atualizado_em,
-    atualizadoPor: item.atualizado_por,
-    participantes: vinculos.map((vinculo) => vinculo.usuario_id),
-    arquivoNome: item.arquivo_nome,
-    arquivoGeradoNome: item.arquivo_gerado_nome,
-    concluidoEm: item.concluido_em,
-    concluidoPor: item.concluido_por,
-    capa: item.capa,
-    status: item.status,
-    lancamentos: item.lancamentos ?? {},
-  }
+  return projetoDeLinha(
+    item,
+    vinculos.map((vinculo) => vinculo.usuario_id),
+    comValores,
+  )
 }
 
 export function caminhoDoArquivo(id: string) {
@@ -459,20 +495,38 @@ export function limparConclusao(projeto: Projeto) {
   projeto.concluidoPor = null
 }
 
-export function aplicarPlanilha(
-  projeto: Projeto,
-  nome: string,
-  lida: PlanilhaLida,
-  ator: string,
-  rascunho = false,
-) {
+export function aplicarPlanilha(projeto: Projeto, nome: string, lida: PlanilhaLida, ator: string) {
   projeto.arquivoNome = nome
   projeto.capa = lida.capa
-  projeto.status = rascunho ? 'rascunho' : 'em_preenchimento'
+  projeto.status = 'em_edicao'
   projeto.lancamentos = {}
   limparConclusao(projeto)
   projeto.atualizadoEm = new Date().toISOString()
   projeto.atualizadoPor = ator
+}
+
+function projetoDeLinha(item: ProjetoRow, participantes: string[], comValores = true): Projeto {
+  return completarProjeto({
+    id: item.id,
+    nome: item.nome,
+    data: String(item.data).slice(0, 10),
+    criadoEm: item.criado_em,
+    criadoPor: item.criado_por,
+    atualizadoEm: item.atualizado_em,
+    atualizadoPor: item.atualizado_por,
+    participantes,
+    arquivoNome: item.arquivo_nome,
+    arquivoGeradoNome: item.arquivo_gerado_nome,
+    concluidoEm: item.concluido_em,
+    concluidoPor: item.concluido_por,
+    responsavelId: item.responsavel_id ?? null,
+    responsavelEm: item.responsavel_em ?? null,
+    submetidoEm: item.submetido_em ?? null,
+    previaLiberada: item.previa_liberada === true,
+    capa: item.capa,
+    status: statusCanonico(item.status),
+    lancamentos: comValores ? (item.lancamentos ?? {}) : {},
+  })
 }
 
 function completarProjeto(projeto: Projeto): Projeto {
@@ -482,9 +536,14 @@ function completarProjeto(projeto: Projeto): Projeto {
     arquivoGeradoNome: projeto.arquivoGeradoNome ?? null,
     concluidoEm: projeto.concluidoEm ?? null,
     concluidoPor: projeto.concluidoPor ?? null,
+    responsavelId: projeto.responsavelId ?? null,
+    responsavelEm: projeto.responsavelEm ?? null,
+    submetidoEm: projeto.submetidoEm ?? null,
+    previaLiberada: projeto.previaLiberada === true,
     participantes: projeto.participantes ?? [],
     lancamentos: projeto.lancamentos ?? {},
     capa: projeto.capa ?? null,
+    status: statusCanonico(projeto.status),
   }
 }
 

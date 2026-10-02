@@ -9,6 +9,7 @@ import { COOKIE_RECADO } from '@/lib/auth/sessao'
 import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
+import { pode } from '@/lib/projetos/acesso'
 import { listarProjetos } from '@/lib/projetos/store'
 import { STATUS_PROJETO, type ProjetoLista } from '@/lib/projetos/tipos'
 import { FileSpreadsheet, FolderKanban, Plus } from 'lucide-react'
@@ -47,13 +48,13 @@ export default async function InicioPage({
       {projetos.length === 0 ? (
         <p className="rounded-2xl border bg-card px-5 py-10 text-sm text-muted-foreground shadow-sm">
           {usuario.papel === 'administrador'
-            ? 'Nenhum projeto ainda. Crie o primeiro e, se quiser, carregue a planilha do SESC.'
-            : 'Nenhum projeto seu ainda. Crie o primeiro para começar.'}
+            ? 'Nenhum projeto ainda. Crie o primeiro com a planilha do SESC.'
+            : 'Nenhum projeto seu ainda. Crie o primeiro com a planilha do SESC.'}
         </p>
       ) : (
         <ul className="grid gap-3">
           {projetos.map((projeto) => {
-            const podeRemover = usuario.papel === 'administrador' || projeto.criadoPor === usuario.login
+            const podeRemover = pode(usuario, alvoDaLista(projeto), 'excluir')
             const confirmando = podeRemover && avisos.confirmar === projeto.id
             return (
               <li key={projeto.id} className="rounded-2xl border bg-card shadow-sm">
@@ -68,7 +69,7 @@ export default async function InicioPage({
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{projeto.nome}</span>
-                        <Badge variant={projeto.status === 'em_preenchimento' ? 'default' : 'secondary'}>
+                        <Badge variant={projeto.status === 'em_execucao' ? 'default' : 'secondary'}>
                           {STATUS_PROJETO[projeto.status]}
                         </Badge>
                       </span>
@@ -106,6 +107,16 @@ export default async function InicioPage({
       )}
     </div>
   )
+}
+
+function alvoDaLista(projeto: ProjetoLista) {
+  return {
+    criadoPor: projeto.criadoPor,
+    participantes: [],
+    status: projeto.status,
+    arquivoNome: projeto.arquivoNome,
+    arquivoGeradoNome: null,
+  }
 }
 
 function textoAlteracao(projeto: ProjetoLista) {

@@ -1,107 +1,18 @@
 import { usuarioDaSessao } from '@/lib/auth/guard'
-import { aplicarPreenchimento } from '@/lib/planilha/gravar'
-import { lancamentosIguais } from '@/lib/projetos/lancamento'
-import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
-import { registrarEvento } from '@/lib/operacao/store'
-import {
-  apagarArquivoGerado,
-  gravarArquivoGerado,
-  gravarProjeto,
-  lerArquivoDoProjeto,
-  nomeDeDownload,
-  planilhaDoProjeto,
-  ProjetoDesatualizado,
-  projetoPorId,
-} from '@/lib/projetos/store'
-import type { Lancamento } from '@/lib/projetos/tipos'
+import { pode } from '@/lib/projetos/acesso'
+import { projetoPorId } from '@/lib/projetos/store'
 
-export async function POST(pedido: Request, contexto: { params: Promise<{ id: string }> }) {
+export async function POST(_pedido: Request, contexto: { params: Promise<{ id: string }> }) {
   const usuario = await usuarioDaSessao()
   if (!usuario) return texto('Entre para baixar a planilha.', 401)
   const { id } = await contexto.params
   if (!/^[\w-]+$/.test(id)) return texto('Projeto não encontrado.', 404)
 
-  const projeto = await projetoPorId(id)
+  const projeto = await projetoPorId(id, { valores: false })
   if (!projeto) return texto('Projeto não encontrado.', 404)
-  const participa = usuario.papel === 'administrador' || projeto.participantes.includes(usuario.id)
-  if (!participa) return texto('Este projeto não está com você.', 403)
-
-  const lida = await planilhaDoProjeto(projeto).catch(() => null)
-  if (!lida) return texto('Este projeto ainda não tem planilha.', 400)
-
-  const formData = await pedido.formData()
-  const lido =
-    lida.formato === 'cotacao' && lida.cotacao
-      ? lerLancamentosCotacao(formData, lida.cotacao)
-      : lerLancamentosAnexo(formData, lida.linhas)
-  if (!lido.ok) return texto(lido.erro, 400)
-
-  const lancamentos: Record<string, Lancamento> = lido.lancamentos
-  const concluir = formData.get('concluir') === '1'
-  const reabriu =
-    !concluir && projeto.status === 'concluido' && !lancamentosIguais(projeto.lancamentos, lancamentos)
-  if (reabriu) await apagarArquivoGerado(id)
-  let vistoEm: string
-  try {
-    vistoEm = await gravarProjeto(id, projeto.atualizadoEm, {
-      lancamentos,
-      atualizadoPor: usuario.login,
-      ...(reabriu
-        ? { status: 'em_preenchimento' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
-        : {}),
-    })
-  } catch (erro) {
-    if (erro instanceof ProjetoDesatualizado) return texto(erro.message, 409)
-    if (erro instanceof Error && erro.message === 'Projeto não encontrado.') return texto(erro.message, 404)
-    throw erro
-  }
-
-  let arquivo: Buffer
-  try {
-    arquivo = aplicarPreenchimento(await lerArquivoDoProjeto(id), lida, lancamentos)
-  } catch {
-    return texto('Não foi possível montar a planilha.', 500)
-  }
-
-  const nome = nomeDeDownload(projeto.arquivoNome)
-  if (concluir) {
-    try {
-      await gravarArquivoGerado(id, arquivo)
-    } catch {
-      return texto('Não foi possível gravar a planilha gerada.', 500)
-    }
-    const concluidoEm = new Date().toISOString()
-    try {
-      await gravarProjeto(id, vistoEm, {
-        status: 'concluido',
-        arquivoGeradoNome: nome,
-        concluidoEm,
-        concluidoPor: usuario.login,
-        atualizadoPor: usuario.login,
-      })
-    } catch (erro) {
-      if (erro instanceof ProjetoDesatualizado) return texto(erro.message, 409)
-      if (erro instanceof Error && erro.message === 'Projeto não encontrado.') return texto(erro.message, 404)
-      throw erro
-    }
-  }
-
-  await registrarEvento({
-    nivel: 'info',
-    evento: concluir ? 'PROJECT_CONCLUDED' : 'PROJECT_DOWNLOADED',
-    ator: usuario.login,
-    mensagem: concluir
-      ? `${usuario.login} concluiu “${projeto.nome}” e gerou a planilha.`
-      : `${usuario.login} baixou a planilha preenchida de “${projeto.nome}”.`,
-    detalhe: { projeto: id, arquivo: nome },
-  })
-  return new Response(new Uint8Array(arquivo), {
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${nome}"; filename*=UTF-8''${encodeURIComponent(nome)}`,
-      'Cache-Control': 'no-store',
-    },
-  })
+  if (!pode(usuario, projeto, 'ver')) return texto('Este projeto não está com você.', 403)
+  if (projeto.status === 'concluido') return texto('Um projeto concluído não pode ser alterado.', 403)
+  return texto('Baixar o resultado não está disponível nesta etapa.', 403)
 }
 
 function texto(mensagem: string, status: number) {

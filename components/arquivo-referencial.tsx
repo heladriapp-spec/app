@@ -12,13 +12,15 @@ export function NotaArquivoReferencial({
   projetoId: string
   gerado?: boolean
 }) {
-  if (!nome) return null
+  if (!nome && !gerado) return null
   return (
     <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-      <LinkArquivo href={`/api/projetos/${projetoId}/arquivo?papel=origem`}>
-        <Download className="size-3.5 shrink-0 text-primary" aria-hidden />
-        <span className="truncate">{nome}</span>
-      </LinkArquivo>
+      {nome ? (
+        <LinkArquivo href={`/api/projetos/${projetoId}/arquivo?papel=origem`}>
+          <Download className="size-3.5 shrink-0 text-primary" aria-hidden />
+          <span className="truncate">{nome}</span>
+        </LinkArquivo>
+      ) : null}
       {gerado ? (
         <LinkArquivo href={`/api/projetos/${projetoId}/arquivo?papel=gerado`}>
           <FileDown className="size-3.5 shrink-0" aria-hidden />

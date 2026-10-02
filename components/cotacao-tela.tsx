@@ -2,9 +2,7 @@
 
 import { salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
-import { Recado } from '@/components/recado'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
-import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { CotacaoLida, FaseCronograma, ItemCotacao } from '@/lib/planilha/cotacao'
@@ -36,7 +34,6 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -71,14 +68,12 @@ const STATUS: Record<string, string> = {
 export function CotacaoTela({
   projetoId,
   arquivoNome,
-  arquivoGerado = false,
   cotacao,
   iniciais,
   salvo = false,
 }: {
   projetoId: string
   arquivoNome: string | null
-  arquivoGerado?: boolean
   cotacao: CotacaoLida
   iniciais: Valores
   salvo?: boolean
@@ -86,10 +81,8 @@ export function CotacaoTela({
   const capitulos = montarCapitulos(cotacao)
   const [valores, setValores] = useState(iniciais)
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
-  const [aviso, setAviso] = useState('')
   const [indo, setIndo] = useState<string | null>(null)
   const [pendente, iniciar] = useTransition()
-  const router = useRouter()
   const totais = totaisDe(cotacao, valores)
   const ordem = capitulos.findIndex((item) => item.id === aberto)
   const atual = capitulos[ordem] ?? capitulos[0]
@@ -114,34 +107,6 @@ export function CotacaoTela({
     }))
   }
 
-  async function aoBaixar(form: HTMLFormElement) {
-    setAviso('')
-    try {
-      const erro = await baixarPlanilha(form)
-      if (erro) setAviso(erro)
-      else router.refresh()
-      return erro
-    } catch {
-      const texto = 'Não foi possível baixar a planilha.'
-      setAviso(texto)
-      return texto
-    }
-  }
-
-  async function aoConcluir(form: HTMLFormElement) {
-    setAviso('')
-    try {
-      const erro = await baixarPlanilha(form, { concluir: true })
-      if (erro) setAviso(erro)
-      else router.refresh()
-      return erro
-    } catch {
-      const texto = 'Não foi possível concluir o projeto.'
-      setAviso(texto)
-      return texto
-    }
-  }
-
   return (
     <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
@@ -154,7 +119,7 @@ export function CotacaoTela({
         onAbrir={ir}
         carregando={pendente ? indo : null}
         arquivo={
-          <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} gerado={arquivoGerado} />
+          <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} />
         }
       />
       <div className="flex flex-col gap-4">
@@ -212,7 +177,6 @@ export function CotacaoTela({
                 <Resumo cotacao={cotacao} iniciais={valores} totais={totais} />
               ) : null}
               {item.origem === 'cronograma' ? <Cronograma cotacao={cotacao} /> : null}
-              {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
               <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-4 md:shadow-sm">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
@@ -229,7 +193,7 @@ export function CotacaoTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} onBaixar={aoBaixar} onConcluir={aoConcluir} />
+                  <AcoesPreenchimento salvo={salvo} />
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

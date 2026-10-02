@@ -1,11 +1,13 @@
 'use server'
 
 import { requireUser } from '@/lib/auth/guard'
+import { pode } from '@/lib/projetos/acesso'
 import { lerPlanilha } from '@/lib/planilha/ler'
 import { AVISO_PLANILHA_GRANDE, LIMITE_PLANILHA } from '@/lib/planilha/limite'
-import { lancamentosIguais } from '@/lib/projetos/lancamento'
 import { dataHojeISO } from '@/lib/planilha/numeros'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
+import { registrarEventoProjeto } from '@/lib/projetos/eventos'
+import { DOCUMENTO_SALVO, PROJETO_ENVIADO } from '@/lib/projetos/frases'
 import {
   apagarArquivoDoProjeto,
   apagarArquivoGerado,
@@ -17,11 +19,11 @@ import {
   planilhaDoProjeto,
   ProjetoDesatualizado,
   projetoPorId,
+  TransicaoRecusada,
 } from '@/lib/projetos/store'
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import type { Projeto } from '@/lib/projetos/tipos'
 import { registrarEvento } from '@/lib/operacao/store'
-import { RASCUNHO_SALVO } from '@/lib/projetos/frases'
 import { redirect } from 'next/navigation'
 
 function voltar(caminho: string, texto: string, ok = false): never {
@@ -68,10 +70,10 @@ export async function criarProjeto(formData: FormData) {
   } catch (erro) {
     voltar('/projetos/novo', erro instanceof Error ? erro.message : 'Não foi possível ler a planilha.')
   }
+  if (!upload) voltar('/projetos/novo', 'Escolha a planilha .xlsx do SESC.')
 
   const agora = new Date().toISOString()
   const id = crypto.randomUUID()
-  const rascunho = String(formData.get('acao') ?? '') === 'rascunho'
   const projeto: Projeto = {
     id,
     nome,
@@ -85,22 +87,26 @@ export async function criarProjeto(formData: FormData) {
     arquivoGeradoNome: null,
     concluidoEm: null,
     concluidoPor: null,
+    responsavelId: null,
+    responsavelEm: null,
+    submetidoEm: null,
+    previaLiberada: false,
     capa: null,
-    status: rascunho ? 'rascunho' : 'sem_planilha',
+    status: 'em_edicao',
     lancamentos: {},
   }
-  if (upload) aplicarPlanilha(projeto, upload.nome, upload.lida, usuario.login, rascunho)
+  aplicarPlanilha(projeto, upload.nome, upload.lida, usuario.login)
 
   let falha: unknown = null
   try {
     await inserirProjeto(projeto)
-    if (upload) await gravarArquivoDoProjeto(id, upload.buf)
+    await gravarArquivoDoProjeto(id, upload.buf)
   } catch (erro) {
     falha = erro
   }
   if (falha) {
     await apagarProjeto(id).catch(() => undefined)
-    if (upload) await apagarArquivoDoProjeto(id).catch(() => undefined)
+    await apagarArquivoDoProjeto(id).catch(() => undefined)
     voltar(
       '/projetos/novo',
       falha instanceof Error ? falha.message : 'Não foi possível criar o projeto.',
@@ -111,21 +117,20 @@ export async function criarProjeto(formData: FormData) {
     nivel: 'info',
     evento: 'PROJECT_CREATED',
     ator: usuario.login,
-    mensagem: rascunho
-      ? `${usuario.login} salvou o rascunho “${nome}”.`
-      : `${usuario.login} criou o projeto “${nome}”.`,
-    detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
+    mensagem: `${usuario.login} criou o projeto “${nome}”.`,
+    detalhe: { projeto: id, planilha: true },
   })
-  if (rascunho) redirect(`/projetos/${id}?ok=${encodeURIComponent(RASCUNHO_SALVO)}`)
   redirect(`/projetos/${id}`)
 }
 
 export async function removerProjeto(formData: FormData) {
   const usuario = await requireUser()
   const id = String(formData.get('id') ?? '')
-  const projeto = await projetoPorId(id)
+  const projeto = await projetoPorId(id, { valores: false })
   if (!projeto) voltar('/', 'Projeto não encontrado.')
-  if (!podeRemover(usuario, projeto)) voltar('/', 'Você só pode remover um projeto que você criou.')
+  if (!pode(usuario, projeto, 'excluir')) {
+    voltar('/', 'Só dá para remover um projeto em preparação, e apenas quem o criou.')
+  }
 
   await apagarArquivoDoProjeto(id)
   await apagarProjeto(id)
@@ -142,8 +147,8 @@ export async function removerProjeto(formData: FormData) {
 export async function carregarPlanilha(formData: FormData) {
   const usuario = await requireUser()
   const id = String(formData.get('id') ?? '')
-  const projeto = await projetoPorId(id)
-  if (!projeto || !podeLancar(usuario.id, usuario.papel, projeto)) redirect('/')
+  const projeto = await projetoPorId(id, { valores: false })
+  if (!projeto || !pode(usuario, projeto, 'editar')) redirect('/')
 
   let upload: Awaited<ReturnType<typeof lerUpload>> = null
   try {
@@ -157,23 +162,28 @@ export async function carregarPlanilha(formData: FormData) {
   try {
     await gravarArquivoDoProjeto(id, upload.buf)
     await apagarArquivoGerado(id)
-    await gravarProjeto(id, projeto.atualizadoEm, {
-      arquivoNome: upload.nome,
-      capa: upload.lida.capa,
-      status: projeto.status === 'rascunho' ? 'rascunho' : 'em_preenchimento',
-      lancamentos: {},
-      arquivoGeradoNome: null,
-      concluidoEm: null,
-      concluidoPor: null,
-      atualizadoPor: usuario.login,
-    })
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      {
+        arquivoNome: upload.nome,
+        capa: upload.lida.capa,
+        status: 'em_edicao',
+        lancamentos: {},
+        arquivoGeradoNome: null,
+        concluidoEm: null,
+        concluidoPor: null,
+        atualizadoPor: usuario.login,
+      },
+      { status: 'em_edicao' },
+    )
   } catch (erro) {
     falha = erro
   }
   if (falha) {
     voltar(
       `/projetos/${id}`,
-      falha instanceof ProjetoDesatualizado
+      falha instanceof ProjetoDesatualizado || falha instanceof TransicaoRecusada
         ? falha.message
         : falha instanceof Error
           ? falha.message
@@ -194,84 +204,81 @@ export async function salvarPreenchimento(formData: FormData) {
   const usuario = await requireUser()
   const id = String(formData.get('id') ?? '')
   const projeto = await projetoPorId(id)
-  if (!projeto || !podeLancar(usuario.id, usuario.papel, projeto)) redirect('/')
+  if (!projeto || !pode(usuario, projeto, 'editar')) redirect('/')
+  const submeter = String(formData.get('acao') ?? '') === 'submeter'
+  if (submeter && !pode(usuario, projeto, 'submeter')) {
+    voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
+  }
   const lida = await planilhaDoProjeto(projeto)
   if (!lida) voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
 
   if (lida.formato === 'cotacao' && lida.cotacao) {
-    await gravarCotacao(id, projeto.nome, usuario.login, formData, lida.cotacao)
+    await gravarCotacao(id, projeto, usuario.login, formData, lida.cotacao, submeter)
     return
   }
 
   const lido = lerLancamentosAnexo(formData, lida.linhas)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, projeto.nome, usuario.login, lido.lancamentos, formData.get('acao') === 'rascunho')
+  await gravarLancamentos(id, projeto, usuario.login, lido.lancamentos, submeter)
 }
 
 async function gravarCotacao(
   id: string,
-  nome: string,
+  projeto: Projeto,
   ator: string,
   formData: FormData,
   cotacao: CotacaoLida,
+  submeter: boolean,
 ) {
   const lido = lerLancamentosCotacao(formData, cotacao)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, nome, ator, lido.lancamentos, formData.get('acao') === 'rascunho')
+  await gravarLancamentos(id, projeto, ator, lido.lancamentos, submeter)
 }
 
 async function gravarLancamentos(
   id: string,
-  nome: string,
+  antes: Projeto,
   ator: string,
   lancamentos: Projeto['lancamentos'],
-  rascunho: boolean,
+  submeter: boolean,
 ) {
-  const antes = await projetoPorId(id)
-  if (!antes) voltar(`/projetos/${id}`, 'Projeto não encontrado.')
-  const reabriu = Boolean(
-    !rascunho && antes.status === 'concluido' && !lancamentosIguais(antes.lancamentos, lancamentos),
-  )
-  if (rascunho || reabriu) await apagarArquivoGerado(id)
+  if (antes.status === 'concluido') {
+    voltar(`/projetos/${id}`, 'Um projeto concluído não pode ser alterado.')
+  }
+  if (antes.status !== 'em_edicao') {
+    voltar(`/projetos/${id}`, 'Este projeto já foi enviado.')
+  }
+  const agora = new Date().toISOString()
   try {
-    await gravarProjeto(id, antes.atualizadoEm, {
-      lancamentos,
-      atualizadoPor: ator,
-      ...(rascunho
-        ? { status: 'rascunho' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
-        : {}),
-      ...(reabriu
-        ? { status: 'em_preenchimento' as const, arquivoGeradoNome: null, concluidoEm: null, concluidoPor: null }
-        : {}),
-    })
+    await gravarProjeto(
+      id,
+      antes.atualizadoEm,
+      {
+        lancamentos,
+        atualizadoPor: ator,
+        ...(submeter ? { status: 'em_execucao' as const, submetidoEm: agora } : {}),
+      },
+      { status: 'em_edicao' },
+    )
   } catch (erro) {
-    if (erro instanceof ProjetoDesatualizado) voltar(`/projetos/${id}`, erro.message)
+    if (erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada) {
+      voltar(`/projetos/${id}`, erro.message)
+    }
     if (erro instanceof Error && erro.message === 'Projeto não encontrado.') {
       voltar(`/projetos/${id}`, erro.message)
     }
     throw erro
   }
+  if (submeter) {
+    await registrarEventoProjeto({ projetoId: id, tipo: 'submetido', ator })
+    voltar(`/projetos/${id}`, PROJETO_ENVIADO, true)
+  }
   await registrarEvento({
     nivel: 'info',
-    evento: rascunho ? 'PROJECT_DRAFT' : 'PROJECT_SAVED',
+    evento: 'PROJECT_SAVED',
     ator,
-    mensagem: rascunho
-      ? `${ator} salvou o rascunho de “${nome}”.`
-      : `${ator} gravou o preenchimento de “${nome}”.`,
+    mensagem: `${ator} gravou o preenchimento de “${antes.nome}”.`,
     detalhe: { projeto: id },
   })
-  const aviso = rascunho
-    ? RASCUNHO_SALVO
-    : reabriu
-      ? 'Preenchimento gravado. O projeto voltou para em preenchimento.'
-      : 'Preenchimento gravado.'
-  voltar(`/projetos/${id}`, aviso, true)
-}
-
-function podeLancar(usuarioId: string, papel: string, projeto: Projeto) {
-  return papel === 'administrador' || projeto.participantes.includes(usuarioId)
-}
-
-function podeRemover(usuario: { login: string; papel: string }, projeto: Projeto) {
-  return usuario.papel === 'administrador' || projeto.criadoPor === usuario.login
+  voltar(`/projetos/${id}`, DOCUMENTO_SALVO, true)
 }

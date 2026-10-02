@@ -2,9 +2,7 @@
 
 import { salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
-import { Recado } from '@/components/recado'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
-import { baixarPlanilha } from '@/components/baixar-planilha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { LinhaPlanilha } from '@/lib/planilha/ler'
@@ -13,7 +11,6 @@ import { lancamentoDaLinha } from '@/lib/projetos/lancamento'
 import type { Lancamento, Projeto } from '@/lib/projetos/tipos'
 import { cn } from '@/lib/utils'
 import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 
 type Capitulo = {
@@ -50,10 +47,8 @@ export function PlanilhaTela({
   const capitulos = capitulosDe(linhas)
   const [valores, setValores] = useState(() => valoresIniciais(projeto, linhas))
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
-  const [aviso, setAviso] = useState('')
   const [indo, setIndo] = useState<string | null>(null)
   const [pendente, iniciar] = useTransition()
-  const router = useRouter()
   const atual = capitulos.find((item) => item.id === aberto) ?? capitulos[0]
   if (!atual) return null
 
@@ -69,41 +64,12 @@ export function PlanilhaTela({
     }))
   }
 
-  async function aoBaixar(form: HTMLFormElement) {
-    setAviso('')
-    try {
-      const erro = await baixarPlanilha(form)
-      if (erro) setAviso(erro)
-      else router.refresh()
-      return erro
-    } catch {
-      const texto = 'Não foi possível baixar a planilha.'
-      setAviso(texto)
-      return texto
-    }
-  }
-
-  async function aoConcluir(form: HTMLFormElement) {
-    setAviso('')
-    try {
-      const erro = await baixarPlanilha(form, { concluir: true })
-      if (erro) setAviso(erro)
-      else router.refresh()
-      return erro
-    } catch {
-      const texto = 'Não foi possível concluir o projeto.'
-      setAviso(texto)
-      return texto
-    }
-  }
-
   return (
     <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial
         nome={projeto.arquivoNome}
         projetoId={projeto.id}
-        gerado={projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome)}
       />
       <nav aria-label="Capítulos" className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">Verde, preenchido. Laranja, ainda falta valor.</p>
@@ -154,7 +120,6 @@ export function PlanilhaTela({
                 <h2 className="text-xl font-semibold tracking-tight">{item.nome}</h2>
               </div>
               <Tabela itens={item.itens} valores={valores} onAlterar={alterar} />
-              {aviso ? <Recado tom="erro">{aviso}</Recado> : null}
               <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-4 shadow-sm backdrop-blur">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
@@ -171,7 +136,7 @@ export function PlanilhaTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} onBaixar={aoBaixar} onConcluir={aoConcluir} />
+                  <AcoesPreenchimento salvo={salvo} />
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

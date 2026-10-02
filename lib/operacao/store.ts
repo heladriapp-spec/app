@@ -50,6 +50,8 @@ export type Usuario = {
   sessaoGeracao: number
   origem: 'instalacao' | 'pedido'
   ocultarBoasVindas: boolean
+  /** Capacidade da conta. Nasce desligada. Não é um papel. */
+  executor: boolean
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senhaHash'>
@@ -129,6 +131,7 @@ async function semear(): Promise<Store> {
         sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
+        executor: false,
       },
       {
         id: 'instalacao-convidado',
@@ -146,6 +149,7 @@ async function semear(): Promise<Store> {
         sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
+        executor: false,
       },
     ],
     pedidos: [],
@@ -159,6 +163,7 @@ function completar(store: Store): Store {
   if (!Array.isArray(store.links)) store.links = []
   for (const usuario of store.usuarios) {
     if (typeof usuario.ocultarBoasVindas !== 'boolean') usuario.ocultarBoasVindas = false
+    if (typeof usuario.executor !== 'boolean') usuario.executor = false
     const nomes = partirNome(usuario.nome)
     if (!usuario.primeiroNome) usuario.primeiroNome = nomes.primeiroNome
     if (usuario.sobrenome == null) usuario.sobrenome = nomes.sobrenome
@@ -361,6 +366,7 @@ const COLUNAS_USUARIO = [
   'sessao_geracao',
   'origem',
   'ocultar_boas_vindas',
+  'executor',
 ]
 const OPCIONAIS_USUARIO = [
   'primeiro_nome',
@@ -369,6 +375,7 @@ const OPCIONAIS_USUARIO = [
   'ultimo_acesso_em',
   'sessao_geracao',
   'ocultar_boas_vindas',
+  'executor',
 ]
 
 type UsuarioPublicoRow = Omit<UsuarioRow, 'senha_hash'>
@@ -396,6 +403,7 @@ function usuarioPublicoDe(item: UsuarioPublicoRow): UsuarioPublico {
     sessaoGeracao: typeof item.sessao_geracao === 'number' ? item.sessao_geracao : 0,
     origem: item.origem,
     ocultarBoasVindas: item.ocultar_boas_vindas === true,
+    executor: item.executor === true,
   }
 }
 
@@ -644,6 +652,7 @@ type UsuarioRow = {
   sessao_geracao?: number | null
   origem: Usuario['origem']
   ocultar_boas_vindas?: boolean | null
+  executor?: boolean | null
 }
 
 const COLUNAS_PEDIDO = [
@@ -797,17 +806,26 @@ async function gravarUsuarios(usuarios: Usuario[]) {
     ativo: item.ativo,
     origem: item.origem,
     ocultar_boas_vindas: item.ocultarBoasVindas,
+    executor: item.executor,
   }))
-  try {
-    await gravarTabela('usuarios', linhas)
-  } catch (erro) {
-    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
-    if (usuarios.some((item) => item.ocultarBoasVindas)) throw erro
-    await gravarTabela(
-      'usuarios',
-      linhas.map(({ ocultar_boas_vindas: _ocultar, ...resto }) => resto),
-    )
+  let atuais: Record<string, unknown>[] = linhas
+  for (let tentativa = 0; tentativa < 4; tentativa++) {
+    try {
+      await gravarTabela('usuarios', atuais)
+      return
+    } catch (erro) {
+      const falta = colunaQueFalta(erro)
+      if (falta !== 'ocultar_boas_vindas' && falta !== 'executor') throw erro
+      if (falta === 'ocultar_boas_vindas' && usuarios.some((item) => item.ocultarBoasVindas)) throw erro
+      if (falta === 'executor' && usuarios.some((item) => item.executor)) throw erro
+      atuais = atuais.map((linha) => {
+        const copia = { ...linha }
+        delete copia[falta]
+        return copia
+      })
+    }
   }
+  throw new Error('Não foi possível gravar as contas.')
 }
 
 async function lerLinks() {
@@ -1052,6 +1070,7 @@ function criarContaLocal(
     sessaoGeracao: 0,
     origem: 'pedido',
     ocultarBoasVindas: false,
+    executor: false,
   })
   return null
 }
@@ -1076,6 +1095,7 @@ async function criarContaNuvem(
       ativo: true,
       origem: 'pedido',
       ocultar_boas_vindas: false,
+      executor: false,
     })
   } catch (erro) {
     return traduzirUnico(erro, {
@@ -1588,6 +1608,7 @@ async function confirmarContaLocal(entrada: { token: string; senha: string }) {
       sessaoGeracao: 0,
       origem: 'pedido',
       ocultarBoasVindas: false,
+      executor: false,
     })
     link.usadoEm = new Date().toISOString()
     return { erro: null, usuarioId, login, email: login, papel }
@@ -1626,6 +1647,7 @@ async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
       sessao_geracao: 0,
       origem: 'pedido',
       ocultar_boas_vindas: false,
+      executor: false,
     })
   } catch (erro) {
     return {
