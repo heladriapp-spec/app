@@ -32,7 +32,7 @@ export async function enviarConfirmacao(email: string, nome: string, token: stri
       `Olá, ${nome}.`,
       '',
       'O administrador aprovou seu pedido de acesso ao Heladri.',
-      'Abra o link para confirmar e escolher usuário e senha.',
+      'Abra o link para definir a sua senha. O e-mail já é o seu login.',
       'Ele vale 24 horas e funciona uma vez.',
       '',
       link,

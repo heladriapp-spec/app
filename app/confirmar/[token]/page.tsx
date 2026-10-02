@@ -1,9 +1,11 @@
 import { confirmarAcesso } from '@/app/actions/auth'
 import { AuthShell } from '@/components/auth-shell'
+import { CampoSenha } from '@/components/campo-senha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { motivoDoLink, tokenInformado } from '@/lib/auth/links'
+import { partirNome } from '@/lib/auth/politica-senha'
 import { buscarLinkPorToken, buscarPedidoPorId } from '@/lib/operacao/store'
 import Link from 'next/link'
 
@@ -29,23 +31,22 @@ export default async function ConfirmarPage({
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            {pedido?.nome}, escolha o usuário e a senha. O link vale uma vez. A conta entra como usuário comum.
+            {pedido?.nome}, defina a senha. O e-mail já é o login. O link vale uma vez.
           </p>
           {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
           <form action={confirmarAcesso} className="grid gap-3">
             <input type="hidden" name="token" value={token ?? ''} />
             <div className="grid gap-1.5">
-              <Label htmlFor="login">Usuário</Label>
-              <Input id="login" name="login" autoComplete="username" required />
+              <Label htmlFor="email">E-mail</Label>
+              <Input id="email" value={link?.email ?? ''} disabled />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="senha">Senha</Label>
-              <Input id="senha" name="senha" type="password" autoComplete="new-password" required />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="senha2">Repetir senha</Label>
-              <Input id="senha2" name="senha2" type="password" autoComplete="new-password" required />
-            </div>
+            <CampoSenha
+              pessoa={{
+                primeiroNome: pedido?.primeiroNome || partirNome(pedido?.nome ?? '').primeiroNome,
+                sobrenome: pedido?.sobrenome || partirNome(pedido?.nome ?? '').sobrenome,
+                email: link?.email ?? '',
+              }}
+            />
             <Button type="submit">Confirmar e entrar</Button>
           </form>
         </>

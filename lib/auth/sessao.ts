@@ -22,24 +22,34 @@ function assinar(corpo: string) {
   return createHmac('sha256', segredo()).update(corpo).digest('base64url')
 }
 
-export function emitirSessao(userId: string) {
+export function emitirSessao(userId: string, geracao = 0) {
   const exp = Date.now() + 7 * 24 * 60 * 60 * 1000
-  const corpo = `${userId}.${exp}`
+  const corpo = `${userId}.${geracao}.${exp}`
   return `${corpo}.${assinar(corpo)}`
 }
 
 export function lerSessao(token: string | undefined) {
   if (!token) return null
   const partes = token.split('.')
-  if (partes.length !== 3) return null
-  const [userId, exp, mac] = partes
-  if (!userId || !exp || !mac) return null
-  const esperado = assinar(`${userId}.${exp}`)
+  if (partes.length === 3) {
+    const [userId, exp, mac] = partes
+    if (!confere(`${userId}.${exp}`, mac)) return null
+    if (Number(exp) < Date.now()) return null
+    return { userId, geracao: 0 }
+  }
+  if (partes.length !== 4) return null
+  const [userId, geracaoBruta, exp, mac] = partes
+  if (!userId || !/^\d+$/.test(geracaoBruta) || !exp || !mac) return null
+  if (!confere(`${userId}.${geracaoBruta}.${exp}`, mac)) return null
+  if (Number(exp) < Date.now()) return null
+  return { userId, geracao: Number(geracaoBruta) }
+}
+
+function confere(corpo: string, mac: string) {
+  const esperado = assinar(corpo)
   const a = Buffer.from(mac)
   const b = Buffer.from(esperado)
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-  if (Number(exp) < Date.now()) return null
-  return userId
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 export const COOKIE_SESSAO = 'heladri_sessao'

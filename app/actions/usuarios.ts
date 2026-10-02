@@ -1,17 +1,19 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth/guard'
-import { validarLogin, validarSenha } from '@/lib/auth/credencial'
-import { enviarConfirmacao } from '@/lib/email/mensagem'
+import { enviarConfirmacao, enviarRecuperacao } from '@/lib/email/mensagem'
+import { remetenteConfigurado } from '@/lib/email/smtp'
 import {
   atualizarConta,
-  criarConta,
+  buscarUsuarioPublicoPorId,
+  convidarConta,
   decidirPedidoOperacao,
   excluirConta,
+  prepararRecuperacao,
   reenviarConvite,
   registrarEvento,
-  trocarSenhaDaConta,
   type Papel,
+  type SituacaoConta,
 } from '@/lib/operacao/store'
 import { redirect, unstable_rethrow } from 'next/navigation'
 
@@ -99,69 +101,86 @@ export async function reenviarNotificacao(formData: FormData) {
 export async function configurarUsuario(formData: FormData) {
   const admin = await requireAdmin()
   const id = String(formData.get('id') ?? '')
-  const nome = String(formData.get('nome') ?? '').trim()
+  const primeiroNome = String(formData.get('primeiroNome') ?? '').trim()
+  const sobrenome = String(formData.get('sobrenome') ?? '').trim()
   const celular = String(formData.get('celular') ?? '').trim()
   const papel = String(formData.get('papel') ?? '') as Papel
-  const ativo = formData.get('ativo') === 'on'
+  const situacao = String(formData.get('situacao') ?? '') as SituacaoConta
 
-  if (nome.length < 2) voltar('O nome precisa de ao menos 2 caracteres.')
+  if (primeiroNome.length < 2) voltar('O primeiro nome precisa de ao menos 2 caracteres.')
   if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
+  if (situacao !== 'ativa' && situacao !== 'bloqueada' && situacao !== 'desativada') {
+    voltar('Situação inválida.')
+  }
 
-  const erro = await atualizarConta(id, { nome, celular: celular || null, papel, ativo }, admin.login)
+  const erro = await atualizarConta(
+    id,
+    { primeiroNome, sobrenome, celular: celular || null, papel, situacao },
+    admin.login,
+  )
 
   if (erro) voltar(erro)
   voltar('Configuração gravada.', true)
 }
 
-function senhaInformada(formData: FormData) {
-  const senha = String(formData.get('senha') ?? '')
-  const senha2 = String(formData.get('senha2') ?? '')
-  const erro = validarSenha(senha, senha2)
-  if (erro) voltar(erro)
-  return senha
-}
-
-function loginInformado(bruto: string) {
-  const resultado = validarLogin(bruto)
-  if (!resultado.ok) voltar(resultado.erro)
-  return resultado.login
-}
-
 export async function criarUsuario(formData: FormData) {
   const admin = await requireAdmin()
-  const nome = String(formData.get('nome') ?? '').trim()
-  const emailBruto = String(formData.get('email') ?? '').trim().toLowerCase()
+  const primeiroNome = String(formData.get('primeiroNome') ?? '').trim()
+  const sobrenome = String(formData.get('sobrenome') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
   const celular = String(formData.get('celular') ?? '').trim()
   const papel = String(formData.get('papel') ?? 'comum') as Papel
-  const login = loginInformado(String(formData.get('login') ?? ''))
-  const senha = senhaInformada(formData)
-  if (nome.length < 2) voltar('O nome precisa de ao menos 2 caracteres.')
+  if (primeiroNome.length < 2 || sobrenome.length < 2) voltar('Informe o primeiro nome e o sobrenome.')
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) voltar('Informe um e-mail válido.')
+  if (celular.replace(/\D/g, '').length < 10) voltar('Informe o celular com DDD.')
   if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
-  const email = emailBruto || null
-  if (email && !email.includes('@')) voltar('Informe um e-mail válido ou deixe em branco.')
+  if (!remetenteConfigurado()) {
+    voltar('O remetente não está configurado. O convite não foi criado.')
+  }
 
-  const erro = await criarConta(
-    { nome, email, celular: celular || null, login, senha, papel },
-    admin.login,
-  )
-
-  if (erro) voltar(erro)
-  voltar(`Conta ${login} criada. A pessoa já pode entrar.`, true)
-}
-
-export async function alterarSenha(formData: FormData) {
-  const admin = await requireAdmin()
-  const id = String(formData.get('id') ?? '')
-  const senha = senhaInformada(formData)
-
+  const convite = { email: '', nome: '', token: '' }
   try {
-    const erro = await trocarSenhaDaConta(id, senha, admin.login)
-    if (erro) voltar(erro)
+    const resultado = await convidarConta({ primeiroNome, sobrenome, email, celular, papel }, admin.login)
+    if (resultado.erro) voltar(resultado.erro)
+    convite.email = resultado.email
+    convite.nome = resultado.nome
+    convite.token = resultado.token
   } catch (error) {
     unstable_rethrow(error)
-    voltar('Não foi possível gravar a senha. Tente de novo.')
+    voltar(avisoGravacao(error))
   }
-  voltar('Senha alterada.', true)
+
+  const envio = await enviarConfirmacao(convite.email, convite.nome, convite.token)
+  if (envio.ok) voltar(`Convite enviado para ${convite.email}. A pessoa define a própria senha.`, true)
+  await registrarFalha(admin.login, convite.email, envio.motivo)
+  voltar(
+    envio.motivo === 'sem_remetente'
+      ? 'O convite foi criado, mas o e-mail não saiu. Reenvie a notificação.'
+      : 'O convite foi criado, mas o e-mail não saiu. Reenvie a notificação.',
+    true,
+  )
+}
+
+export async function enviarLinkDeSenha(formData: FormData) {
+  const admin = await requireAdmin()
+  const id = String(formData.get('id') ?? '')
+  const usuario = await buscarUsuarioPublicoPorId(id)
+  if (!usuario?.email) voltar('Esta conta não tem e-mail. O link de senha não se aplica.')
+  if (usuario.situacao !== 'ativa') voltar('Desbloqueie a conta antes de enviar o link de senha.')
+  if (!remetenteConfigurado()) voltar('O remetente não está configurado. Nada foi enviado.')
+
+  let token = ''
+  try {
+    token = await prepararRecuperacao(usuario.email)
+  } catch (error) {
+    unstable_rethrow(error)
+    voltar('Não foi possível gerar o link. Tente de novo.')
+  }
+  if (!token) voltar('O link não foi gerado. A conta pode estar inativa ou já ter um link recente.')
+  const envio = await enviarRecuperacao(usuario.email, token)
+  if (envio.ok) voltar(`Link de senha enviado para ${usuario.email}.`, true)
+  await registrarFalha(admin.login, usuario.email, envio.motivo)
+  voltar('O link foi gerado, mas o e-mail não saiu.')
 }
 
 export async function excluirUsuario(formData: FormData) {

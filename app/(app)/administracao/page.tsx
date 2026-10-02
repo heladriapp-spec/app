@@ -1,8 +1,8 @@
 import {
-  alterarSenha,
   configurarUsuario,
   criarUsuario,
   decidirPedido,
+  enviarLinkDeSenha,
   excluirUsuario,
   reenviarNotificacao,
 } from '@/app/actions/usuarios'
@@ -91,9 +91,8 @@ export default async function AdministracaoPage({
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Aprovar envia o link de confirmação para o e-mail do pedido. A pessoa escolhe usuário e
-          senha nesse link. Rejeitar não envia e-mail. A conta criada aqui continua valendo, sem
-          esperar o link.
+          Aprovar envia o link para a pessoa definir a própria senha. O e-mail do pedido é o
+          login. Rejeitar não envia e-mail.
         </p>
       </section>
 
@@ -137,31 +136,23 @@ export default async function AdministracaoPage({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">Nova conta</h2>
+        <h2 className="text-sm font-medium">Convidar</h2>
         <form action={criarUsuario} className="grid max-w-xl gap-3 rounded-2xl border bg-card p-4 shadow-sm sm:grid-cols-2">
           <div className="grid gap-1">
-            <Label htmlFor="novo-nome">Nome</Label>
-            <Input id="novo-nome" name="nome" required />
+            <Label htmlFor="novo-primeiro">Primeiro nome</Label>
+            <Input id="novo-primeiro" name="primeiroNome" required />
           </div>
           <div className="grid gap-1">
-            <Label htmlFor="novo-login">Usuário</Label>
-            <Input id="novo-login" name="login" autoComplete="off" required />
+            <Label htmlFor="novo-sobrenome">Sobrenome</Label>
+            <Input id="novo-sobrenome" name="sobrenome" required />
           </div>
           <div className="grid gap-1">
             <Label htmlFor="novo-email">E-mail</Label>
-            <Input id="novo-email" name="email" type="email" autoComplete="off" />
+            <Input id="novo-email" name="email" type="email" autoComplete="off" required />
           </div>
           <div className="grid gap-1">
             <Label htmlFor="novo-celular">Celular</Label>
-            <Input id="novo-celular" name="celular" />
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="novo-senha">Senha</Label>
-            <Input id="novo-senha" name="senha" type="password" autoComplete="new-password" required />
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="novo-senha2">Repetir senha</Label>
-            <Input id="novo-senha2" name="senha2" type="password" autoComplete="new-password" required />
+            <Input id="novo-celular" name="celular" required />
           </div>
           <div className="grid gap-1">
             <Label htmlFor="novo-papel">Papel</Label>
@@ -176,9 +167,12 @@ export default async function AdministracaoPage({
             </select>
           </div>
           <div className="flex items-end">
-            <Button type="submit">Criar usuário</Button>
+            <Button type="submit">Enviar convite</Button>
           </div>
         </form>
+        <p className="text-xs text-muted-foreground">
+          O e-mail vira o login. A pessoa define a senha no link. Você não escolhe essa senha.
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -209,15 +203,34 @@ export default async function AdministracaoPage({
                       {usuario.papel === 'administrador' ? 'Administrador' : 'Usuário comum'}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant={usuario.ativo ? 'secondary' : 'destructive'}>
-                        {usuario.ativo ? 'Ativo' : 'Inativo'}
+                      <Badge variant={usuario.situacao === 'ativa' ? 'secondary' : 'destructive'}>
+                        {usuario.situacao === 'ativa'
+                          ? 'Ativa'
+                          : usuario.situacao === 'bloqueada'
+                            ? 'Bloqueada'
+                            : 'Desativada'}
                       </Badge>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {usuario.ultimoAcessoEm
+                          ? `Último acesso ${dataHoraBR(usuario.ultimoAcessoEm)}`
+                          : 'Sem acesso registrado'}
+                      </p>
                       <details className="mt-2" open={excluir === usuario.id ? true : undefined}>
                         <summary className="cursor-pointer text-xs underline">Configurar</summary>
                         <form action={configurarUsuario} className="mt-2 grid max-w-xs gap-2">
                           <input type="hidden" name="id" value={usuario.id} />
-                          <Label htmlFor={`nome-${usuario.id}`}>Nome</Label>
-                          <Input id={`nome-${usuario.id}`} name="nome" defaultValue={usuario.nome} />
+                          <Label htmlFor={`nome-${usuario.id}`}>Primeiro nome</Label>
+                          <Input
+                            id={`nome-${usuario.id}`}
+                            name="primeiroNome"
+                            defaultValue={usuario.primeiroNome}
+                          />
+                          <Label htmlFor={`sobrenome-${usuario.id}`}>Sobrenome</Label>
+                          <Input
+                            id={`sobrenome-${usuario.id}`}
+                            name="sobrenome"
+                            defaultValue={usuario.sobrenome}
+                          />
                           <Label htmlFor={`cel-${usuario.id}`}>Celular</Label>
                           <Input
                             id={`cel-${usuario.id}`}
@@ -236,42 +249,35 @@ export default async function AdministracaoPage({
                             <option value="comum">Usuário comum</option>
                           </select>
                           {unico ? <input type="hidden" name="papel" value="administrador" /> : null}
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              name="ativo"
-                              defaultChecked={usuario.ativo}
-                              disabled={unico}
-                            />
-                            Ativo
-                          </label>
-                          {unico ? <input type="hidden" name="ativo" value="on" /> : null}
+                          <Label htmlFor={`situacao-${usuario.id}`}>Situação</Label>
+                          <select
+                            id={`situacao-${usuario.id}`}
+                            name="situacao"
+                            defaultValue={usuario.situacao}
+                            disabled={unico}
+                            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                          >
+                            <option value="ativa">Ativa</option>
+                            <option value="bloqueada">Bloqueada</option>
+                            <option value="desativada">Desativada</option>
+                          </select>
+                          {unico ? <input type="hidden" name="situacao" value="ativa" /> : null}
                           <Button type="submit" size="sm">
                             Gravar
                           </Button>
                         </form>
-                        <form action={alterarSenha} className="mt-3 grid max-w-xs gap-2">
-                          <input type="hidden" name="id" value={usuario.id} />
-                          <Label htmlFor={`senha-${usuario.id}`}>Senha nova</Label>
-                          <Input
-                            id={`senha-${usuario.id}`}
-                            name="senha"
-                            type="password"
-                            autoComplete="new-password"
-                            required
-                          />
-                          <Label htmlFor={`senha2-${usuario.id}`}>Repetir senha</Label>
-                          <Input
-                            id={`senha2-${usuario.id}`}
-                            name="senha2"
-                            type="password"
-                            autoComplete="new-password"
-                            required
-                          />
-                          <Button type="submit" size="sm" variant="outline">
-                            Alterar senha
-                          </Button>
-                        </form>
+                        {usuario.email ? (
+                          <form action={enviarLinkDeSenha} className="mt-3">
+                            <input type="hidden" name="id" value={usuario.id} />
+                            <Button type="submit" size="sm" variant="outline">
+                              Enviar link de senha
+                            </Button>
+                          </form>
+                        ) : (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            Esta conta não tem e-mail. A senha dela não é definida por aqui.
+                          </p>
+                        )}
                         {sessao?.id === usuario.id ? (
                           <p className="mt-3 text-xs text-muted-foreground">
                             Esta é a conta em que você está. Outro administrador pode excluí-la.

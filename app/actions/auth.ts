@@ -1,6 +1,6 @@
 'use server'
 
-import { validarLogin, validarSenha } from '@/lib/auth/credencial'
+import { avisosSenha, partirNome } from '@/lib/auth/politica-senha'
 import {
   gravarSessao,
   limparRecadoDeEntrada,
@@ -9,13 +9,17 @@ import {
   usuarioDaSessao,
 } from '@/lib/auth/guard'
 import { ipDoCabecalho, limparFalhasDeLogin, loginBloqueado, registrarFalhaDeLogin } from '@/lib/auth/limite'
-import { tokenInformado } from '@/lib/auth/links'
+import { motivoDoLink, tokenInformado } from '@/lib/auth/links'
 import { confereSenha, consumirTempoDeSenha } from '@/lib/auth/senha'
 import { enviarRecuperacao } from '@/lib/email/mensagem'
 import { remetenteConfigurado } from '@/lib/email/smtp'
 import {
+  buscarLinkPorToken,
+  buscarPedidoPorId,
   buscarUsuarioParaLogin,
+  buscarUsuarioPublicoPorId,
   confirmarConta,
+  marcarUltimoAcesso,
   ocultarBoasVindasDaConta,
   prepararRecuperacao,
   registrarEvento,
@@ -35,8 +39,13 @@ export async function entrar(formData: FormData) {
   const recebidos = await headers()
   const ip = ipDoCabecalho(recebidos.get('x-forwarded-for'), recebidos.get('x-real-ip'))
 
-  let entrou: { id: string; login: string; papel: UsuarioLogin['papel']; ocultarBoasVindas: boolean } | null =
-    null
+  let entrou: {
+    id: string
+    login: string
+    papel: UsuarioLogin['papel']
+    ocultarBoasVindas: boolean
+    sessaoGeracao: number
+  } | null = null
   try {
     if (await loginBloqueado(login, ip)) {
       await registrarEvento({
@@ -63,13 +72,14 @@ export async function entrar(formData: FormData) {
       })
       redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
     }
-    if (!usuario.ativo) {
+    if (usuario.situacao !== 'ativa') {
       await registrarFalhaDeLogin(login, ip)
       await registrarEvento({
         nivel: 'alerta',
         evento: 'USER_LOGIN_FAILED',
         ator: usuario.login,
-        mensagem: 'Conta desativada tentou entrar.',
+        mensagem:
+          usuario.situacao === 'bloqueada' ? 'Conta bloqueada tentou entrar.' : 'Conta desativada tentou entrar.',
         detalhe: { login },
       })
       redirect(`/login?erro=${encodeURIComponent(RECUSA)}`)
@@ -80,6 +90,7 @@ export async function entrar(formData: FormData) {
       login: usuario.login,
       papel: usuario.papel,
       ocultarBoasVindas: usuario.ocultarBoasVindas,
+      sessaoGeracao: usuario.sessaoGeracao,
     }
   } catch (error) {
     unstable_rethrow(error)
@@ -91,7 +102,8 @@ export async function entrar(formData: FormData) {
     )
   }
 
-  await gravarSessao(entrou.id)
+  await marcarUltimoAcesso(entrou.id)
+  await gravarSessao(entrou.id, entrou.sessaoGeracao)
   if (entrou.ocultarBoasVindas) await limparRecadoDeEntrada()
   else await marcarRecadoDeEntrada()
   await registrarEvento({
@@ -120,17 +132,18 @@ export async function sair() {
 }
 
 export async function pedirAcesso(formData: FormData) {
-  const nome = String(formData.get('nome') ?? '').trim()
+  const primeiroNome = String(formData.get('primeiroNome') ?? '').trim()
+  const sobrenome = String(formData.get('sobrenome') ?? '').trim()
   const email = String(formData.get('email') ?? '').trim().toLowerCase()
   const celular = String(formData.get('celular') ?? '').trim()
 
-  if (nome.length < 2 || !email.includes('@') || celular.replace(/\D/g, '').length < 10) {
+  if (primeiroNome.length < 2 || sobrenome.length < 2 || !emailValido(email) || celular.replace(/\D/g, '').length < 10) {
     redirect(
-      `/pedir-acesso?erro=${encodeURIComponent('Informe nome, e-mail válido e celular com DDD.')}`,
+      `/pedir-acesso?erro=${encodeURIComponent('Informe primeiro nome, sobrenome, e-mail válido e celular com DDD.')}`,
     )
   }
 
-  const erro = await registrarPedido({ nome, email, celular })
+  const erro = await registrarPedido({ primeiroNome, sobrenome, email, celular })
 
   if (erro) redirect(`/pedir-acesso?erro=${encodeURIComponent(erro)}`)
   redirect('/pedir-acesso?ok=1')
@@ -174,15 +187,16 @@ export async function confirmarAcesso(formData: FormData) {
   const token = tokenInformado(String(formData.get('token') ?? ''))
   if (!token) redirect('/login?erro=' + encodeURIComponent('Este link não vale.'))
   const destino = `/confirmar/${token}`
-  const login = validarLogin(String(formData.get('login') ?? ''))
-  if (!login.ok) redirect(`${destino}?erro=${encodeURIComponent(login.erro)}`)
+  const pessoa = await pessoaDoConvite(token)
+  if (!pessoa) redirect(`${destino}?erro=${encodeURIComponent('Este link não vale.')}`)
   const senha = String(formData.get('senha') ?? '')
-  const senhaErro = validarSenha(senha, String(formData.get('senha2') ?? ''))
+  const senhaErro = avisosSenha(senha, String(formData.get('senha2') ?? ''), pessoa)[0]
   if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
 
   let usuarioId = ''
+  let geracao = 0
   try {
-    const resultado = await confirmarConta({ token, login: login.login, senha })
+    const resultado = await confirmarConta({ token, senha })
     if (resultado.erro) redirect(`${destino}?erro=${encodeURIComponent(resultado.erro)}`)
     usuarioId = resultado.usuarioId
   } catch (error) {
@@ -190,7 +204,8 @@ export async function confirmarAcesso(formData: FormData) {
     redirect(`${destino}?erro=${encodeURIComponent('Não foi possível confirmar agora. Tente de novo.')}`)
   }
 
-  await gravarSessao(usuarioId)
+  await marcarUltimoAcesso(usuarioId)
+  await gravarSessao(usuarioId, geracao)
   await marcarRecadoDeEntrada()
   redirect('/')
 }
@@ -206,8 +221,10 @@ export async function definirSenhaNova(formData: FormData) {
   const token = tokenInformado(String(formData.get('token') ?? ''))
   if (!token) redirect('/esqueci-senha?erro=' + encodeURIComponent('Este link não vale.'))
   const destino = `/nova-senha/${token}`
+  const pessoa = await pessoaDaRecuperacao(token)
+  if (!pessoa) redirect(`${destino}?erro=${encodeURIComponent('Este link não vale.')}`)
   const senha = String(formData.get('senha') ?? '')
-  const senhaErro = validarSenha(senha, String(formData.get('senha2') ?? ''))
+  const senhaErro = avisosSenha(senha, String(formData.get('senha2') ?? ''), pessoa)[0]
   if (senhaErro) redirect(`${destino}?erro=${encodeURIComponent(senhaErro)}`)
 
   try {
@@ -218,4 +235,34 @@ export async function definirSenhaNova(formData: FormData) {
     redirect(`${destino}?erro=${encodeURIComponent('Não foi possível gravar a senha. Tente de novo.')}`)
   }
   redirect(`/login?ok=${encodeURIComponent('Senha definida. Entre com a senha nova.')}`)
+}
+
+function emailValido(email: string) {
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && email.length <= 120
+}
+
+async function pessoaDoConvite(token: string) {
+  const link = await buscarLinkPorToken(token)
+  if (motivoDoLink(link, 'confirmacao') || !link?.pedidoId) return null
+  const pedido = await buscarPedidoPorId(link.pedidoId)
+  if (!pedido || pedido.situacao !== 'aprovado') return null
+  const nomes = partirNome(pedido.nome)
+  return {
+    primeiroNome: pedido.primeiroNome || nomes.primeiroNome,
+    sobrenome: pedido.sobrenome || nomes.sobrenome,
+    email: link.email,
+  }
+}
+
+async function pessoaDaRecuperacao(token: string) {
+  const link = await buscarLinkPorToken(token)
+  if (motivoDoLink(link, 'senha') || !link?.usuarioId) return null
+  const usuario = await buscarUsuarioPublicoPorId(link.usuarioId)
+  if (!usuario) return null
+  const nomes = partirNome(usuario.nome)
+  return {
+    primeiroNome: usuario.primeiroNome || nomes.primeiroNome,
+    sobrenome: usuario.sobrenome || nomes.sobrenome,
+    email: usuario.email ?? link.email,
+  }
 }

@@ -7,11 +7,8 @@ export default function ErroDaPagina({ reset }: { error: Error & { digest?: stri
   return (
     <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-4 bg-background p-6">
       <Marca compacta />
-      <h1 className="text-lg font-semibold">Não foi possível concluir</h1>
-      <p className="text-sm text-muted-foreground">
-        A ação parou antes de mostrar o aviso. Tente de novo. Se for o login, a tela volta a dizer
-        se o usuário não existe ou se a senha está incorreta.
-      </p>
+      <h1 className="text-lg font-semibold">Erro inesperado</h1>
+      <p className="text-sm text-muted-foreground">Consulte o administrador.</p>
       <Button type="button" onClick={() => reset()}>
         Tentar de novo
       </Button>

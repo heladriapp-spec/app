@@ -15,8 +15,8 @@ export default async function PedirAcessoPage({
   return (
     <AuthShell titulo="Pedir acesso">
       <p className="text-sm text-muted-foreground">
-        Nome, e-mail e celular. Usuário e senha entram no link de confirmação, depois que o
-        administrador aprovar. Até lá o pedido fica pendente.
+        Primeiro nome, sobrenome, e-mail e celular. O e-mail é o login. A senha entra no
+        link, depois que o administrador aprovar.
       </p>
       {ok ? (
         <p className="rounded-lg border px-3 py-2 text-sm">
@@ -26,8 +26,12 @@ export default async function PedirAcessoPage({
       {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
       <form action={pedirAcesso} className="grid gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="nome">Nome</Label>
-          <Input id="nome" name="nome" required />
+          <Label htmlFor="primeiroNome">Primeiro nome</Label>
+          <Input id="primeiroNome" name="primeiroNome" autoComplete="given-name" required />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="sobrenome">Sobrenome</Label>
+          <Input id="sobrenome" name="sobrenome" autoComplete="family-name" required />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="email">E-mail</Label>

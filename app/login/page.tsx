@@ -27,8 +27,9 @@ export default async function LoginPage({
       {erro ? <Recado tom="erro">{erro}</Recado> : null}
       <form action={entrar} className="grid gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="login">Usuário</Label>
+          <Label htmlFor="login">E-mail</Label>
           <Input id="login" name="login" autoComplete="username" required />
+          <p className="text-xs text-muted-foreground">Contas da instalação entram com o usuário delas.</p>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="senha">Senha</Label>

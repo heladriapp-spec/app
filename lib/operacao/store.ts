@@ -11,6 +11,7 @@ import {
   type TipoLink,
 } from '@/lib/auth/links'
 import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
+import { nomeCompleto, partirNome } from '@/lib/auth/politica-senha'
 import { hashSenha } from '@/lib/auth/senha'
 import { cache } from 'react'
 import { tirarParticipanteLocal } from '@/lib/projetos/store'
@@ -31,16 +32,22 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export type Papel = 'administrador' | 'comum'
+export type SituacaoConta = 'ativa' | 'bloqueada' | 'desativada'
 
 export type Usuario = {
   id: string
   nome: string
+  primeiroNome: string
+  sobrenome: string
   email: string | null
   celular: string | null
   login: string
   senhaHash: string
   papel: Papel
   ativo: boolean
+  situacao: SituacaoConta
+  ultimoAcessoEm: string | null
+  sessaoGeracao: number
   origem: 'instalacao' | 'pedido'
   ocultarBoasVindas: boolean
 }
@@ -54,6 +61,8 @@ export type UsuarioLogin = {
   senhaHash: string
   papel: Papel
   ativo: boolean
+  situacao: SituacaoConta
+  sessaoGeracao: number
   ocultarBoasVindas: boolean
 }
 
@@ -62,12 +71,15 @@ export type SituacaoPedido = 'pendente' | 'aprovado' | 'rejeitado'
 export type PedidoAcesso = {
   id: string
   nome: string
+  primeiroNome: string
+  sobrenome: string
   email: string
   celular: string
   criadoEm: string
   situacao: SituacaoPedido
   decididoEm: string | null
   decididoPor: string | null
+  papel: Papel
 }
 
 export type NivelLog = 'info' | 'alerta' | 'erro'
@@ -104,24 +116,34 @@ async function semear(): Promise<Store> {
       {
         id: 'instalacao-adm',
         nome: 'Administrador',
+        primeiroNome: 'Administrador',
+        sobrenome: '',
         email: null,
         celular: null,
         login: 'adm',
         senhaHash: await hashSenha('Administrador@001'),
         papel: 'administrador',
         ativo: true,
+        situacao: 'ativa',
+        ultimoAcessoEm: null,
+        sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
       },
       {
         id: 'instalacao-convidado',
         nome: 'Convidado',
+        primeiroNome: 'Convidado',
+        sobrenome: '',
         email: null,
         celular: null,
         login: 'convidado',
         senhaHash: await hashSenha('convidado@1'),
         papel: 'comum',
         ativo: true,
+        situacao: 'ativa',
+        ultimoAcessoEm: null,
+        sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
       },
@@ -137,6 +159,21 @@ function completar(store: Store): Store {
   if (!Array.isArray(store.links)) store.links = []
   for (const usuario of store.usuarios) {
     if (typeof usuario.ocultarBoasVindas !== 'boolean') usuario.ocultarBoasVindas = false
+    const nomes = partirNome(usuario.nome)
+    if (!usuario.primeiroNome) usuario.primeiroNome = nomes.primeiroNome
+    if (usuario.sobrenome == null) usuario.sobrenome = nomes.sobrenome
+    if (usuario.situacao !== 'ativa' && usuario.situacao !== 'bloqueada' && usuario.situacao !== 'desativada') {
+      usuario.situacao = usuario.ativo ? 'ativa' : 'desativada'
+    }
+    usuario.ativo = usuario.situacao === 'ativa'
+    if (usuario.ultimoAcessoEm === undefined) usuario.ultimoAcessoEm = null
+    if (typeof usuario.sessaoGeracao !== 'number') usuario.sessaoGeracao = 0
+  }
+  for (const pedido of store.pedidos) {
+    const nomes = partirNome(pedido.nome)
+    if (!pedido.primeiroNome) pedido.primeiroNome = nomes.primeiroNome
+    if (pedido.sobrenome == null) pedido.sobrenome = nomes.sobrenome
+    if (pedido.papel !== 'administrador' && pedido.papel !== 'comum') pedido.papel = 'comum'
   }
   return store
 }
@@ -309,60 +346,97 @@ function idSeguro(id: string) {
   return /^[\w-]+$/.test(id)
 }
 
-const COLUNAS_USUARIO =
-  'id,nome,email,celular,login,papel,ativo,origem,ocultar_boas_vindas'
+const COLUNAS_USUARIO = [
+  'id',
+  'nome',
+  'primeiro_nome',
+  'sobrenome',
+  'email',
+  'celular',
+  'login',
+  'papel',
+  'ativo',
+  'situacao',
+  'ultimo_acesso_em',
+  'sessao_geracao',
+  'origem',
+  'ocultar_boas_vindas',
+]
+const OPCIONAIS_USUARIO = [
+  'primeiro_nome',
+  'sobrenome',
+  'situacao',
+  'ultimo_acesso_em',
+  'sessao_geracao',
+  'ocultar_boas_vindas',
+]
 
 type UsuarioPublicoRow = Omit<UsuarioRow, 'senha_hash'>
 
+function situacaoDe(ativo: boolean, situacao: string | null | undefined): SituacaoConta {
+  if (situacao === 'ativa' || situacao === 'bloqueada' || situacao === 'desativada') return situacao
+  return ativo ? 'ativa' : 'desativada'
+}
+
 function usuarioPublicoDe(item: UsuarioPublicoRow): UsuarioPublico {
+  const nomes = partirNome(item.nome)
+  const situacao = situacaoDe(item.ativo, item.situacao)
   return {
     id: item.id,
     nome: item.nome,
+    primeiroNome: item.primeiro_nome || nomes.primeiroNome,
+    sobrenome: item.sobrenome ?? nomes.sobrenome,
     email: item.email,
     celular: item.celular,
     login: item.login,
     papel: item.papel,
-    ativo: item.ativo,
+    ativo: situacao === 'ativa',
+    situacao,
+    ultimoAcessoEm: item.ultimo_acesso_em ?? null,
+    sessaoGeracao: typeof item.sessao_geracao === 'number' ? item.sessao_geracao : 0,
     origem: item.origem,
     ocultarBoasVindas: item.ocultar_boas_vindas === true,
   }
 }
 
-async function lerUsuariosPublicos(filtro: string) {
-  const semOcultar = COLUNAS_USUARIO.replace(',ocultar_boas_vindas', '')
-  try {
-    const linhas = await lerTabela<UsuarioPublicoRow>('usuarios', `select=${COLUNAS_USUARIO}&${filtro}`)
-    return linhas.map(usuarioPublicoDe)
-  } catch (erro) {
-    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
-    const linhas = await lerTabela<UsuarioPublicoRow>('usuarios', `select=${semOcultar}&${filtro}`)
-    return linhas.map(usuarioPublicoDe)
+async function lerColunas<T>(tabela: string, colunas: string[], opcionais: string[], filtro: string) {
+  let atuais = [...colunas]
+  for (;;) {
+    try {
+      return await lerTabela<T>(tabela, `select=${atuais.join(',')}&${filtro}`)
+    } catch (erro) {
+      const falta = colunaQueFalta(erro)
+      if (!falta || !opcionais.includes(falta) || !atuais.includes(falta)) throw erro
+      atuais = atuais.filter((coluna) => coluna !== falta)
+    }
   }
 }
 
-const COLUNAS_LOGIN = 'id,login,senha_hash,papel,ativo,ocultar_boas_vindas'
+async function lerUsuariosPublicos(filtro: string) {
+  const linhas = await lerColunas<UsuarioPublicoRow>('usuarios', COLUNAS_USUARIO, OPCIONAIS_USUARIO, filtro)
+  return linhas.map(usuarioPublicoDe)
+}
+
+const COLUNAS_LOGIN = ['id', 'login', 'senha_hash', 'papel', 'ativo', 'situacao', 'sessao_geracao', 'ocultar_boas_vindas']
+const OPCIONAIS_LOGIN = ['situacao', 'sessao_geracao', 'ocultar_boas_vindas']
 
 function usuarioLoginDe(item: UsuarioLoginRow): UsuarioLogin {
+  const situacao = situacaoDe(item.ativo, item.situacao)
   return {
     id: item.id,
     login: item.login,
     senhaHash: item.senha_hash,
     papel: item.papel,
-    ativo: item.ativo,
+    ativo: situacao === 'ativa',
+    situacao,
+    sessaoGeracao: typeof item.sessao_geracao === 'number' ? item.sessao_geracao : 0,
     ocultarBoasVindas: item.ocultar_boas_vindas === true,
   }
 }
 
 async function lerUsuarioParaLogin(filtro: string) {
-  const semOcultar = COLUNAS_LOGIN.replace(',ocultar_boas_vindas', '')
-  try {
-    const linhas = await lerTabela<UsuarioLoginRow>('usuarios', `select=${COLUNAS_LOGIN}&${filtro}`)
-    return linhas.map(usuarioLoginDe)
-  } catch (erro) {
-    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
-    const linhas = await lerTabela<UsuarioLoginRow>('usuarios', `select=${semOcultar}&${filtro}`)
-    return linhas.map(usuarioLoginDe)
-  }
+  const linhas = await lerColunas<UsuarioLoginRow>('usuarios', COLUNAS_LOGIN, OPCIONAIS_LOGIN, filtro)
+  return linhas.map(usuarioLoginDe)
 }
 
 async function storeLocalParaLogin(): Promise<Store> {
@@ -378,11 +452,21 @@ async function storeLocalParaLogin(): Promise<Store> {
 }
 
 /** Uma linha, com senha_hash. No Supabase, leitura vazia não cria adm nem convidado. */
+function loginConsulta(bruto: string) {
+  const login = bruto.trim().toLowerCase()
+  if (!login || login.length > 120 || /[\s/\\]/.test(login)) return null
+  if (login.includes('@')) {
+    return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(login) ? login : null
+  }
+  return /^[a-z0-9._-]{1,64}$/.test(login) ? login : null
+}
+
 export async function buscarUsuarioParaLogin(login: string): Promise<UsuarioLogin | null> {
-  if (!/^[a-z0-9._-]{1,64}$/.test(login)) return null
+  const normal = loginConsulta(login)
+  if (!normal) return null
   if (!supabaseConfigurado()) {
     const store = await storeLocalParaLogin()
-    const usuario = store.usuarios.find((item) => item.login === login)
+    const usuario = store.usuarios.find((item) => item.login === normal)
     if (!usuario) return null
     return {
       id: usuario.id,
@@ -390,10 +474,12 @@ export async function buscarUsuarioParaLogin(login: string): Promise<UsuarioLogi
       senhaHash: usuario.senhaHash,
       papel: usuario.papel,
       ativo: usuario.ativo,
+      situacao: usuario.situacao,
+      sessaoGeracao: usuario.sessaoGeracao,
       ocultarBoasVindas: usuario.ocultarBoasVindas,
     }
   }
-  const lista = await lerUsuarioParaLogin(`login=eq.${login}&limit=1`)
+  const lista = await lerUsuarioParaLogin(`${filtro('login', 'eq', normal)}&limit=1`)
   return lista[0] ?? null
 }
 
@@ -421,9 +507,11 @@ export async function listarPedidos(): Promise<PedidoAcesso[]> {
     const store = await lerOperacaoLocal()
     return store.pedidos
   }
-  const linhas = await lerTabela<PedidoRow>(
+  const linhas = await lerColunas<PedidoRow>(
     'pedidos_acesso',
-    'select=id,nome,email,celular,criado_em,situacao,decidido_em,decidido_por&order=criado_em.asc',
+    COLUNAS_PEDIDO,
+    OPCIONAIS_PEDIDO,
+    'order=criado_em.asc',
   )
   return linhas.map(pedidoDe)
 }
@@ -434,23 +522,29 @@ export async function buscarPedidoPorId(id: string): Promise<PedidoAcesso | null
     const store = await lerOperacaoLocal()
     return store.pedidos.find((item) => item.id === id) ?? null
   }
-  const linhas = await lerTabela<PedidoRow>(
+  const linhas = await lerColunas<PedidoRow>(
     'pedidos_acesso',
-    `select=id,nome,email,celular,criado_em,situacao,decidido_em,decidido_por&id=eq.${id}&limit=1`,
+    COLUNAS_PEDIDO,
+    OPCIONAIS_PEDIDO,
+    `${filtro('id', 'eq', id)}&limit=1`,
   )
   return linhas[0] ? pedidoDe(linhas[0]) : null
 }
 
 function pedidoDe(item: PedidoRow): PedidoAcesso {
+  const nomes = partirNome(item.nome)
   return {
     id: item.id,
     nome: item.nome,
+    primeiroNome: item.primeiro_nome || nomes.primeiroNome,
+    sobrenome: item.sobrenome ?? nomes.sobrenome,
     email: item.email,
     celular: item.celular,
     criadoEm: item.criado_em,
     situacao: item.situacao,
     decididoEm: item.decidido_em,
     decididoPor: item.decidido_por,
+    papel: item.papel === 'administrador' ? 'administrador' : 'comum',
   }
 }
 
@@ -529,31 +623,56 @@ type UsuarioLoginRow = {
   senha_hash: string
   papel: Papel
   ativo: boolean
+  situacao?: SituacaoConta | null
+  sessao_geracao?: number | null
   ocultar_boas_vindas?: boolean | null
 }
 
 type UsuarioRow = {
   id: string
   nome: string
+  primeiro_nome?: string | null
+  sobrenome?: string | null
   email: string | null
   celular: string | null
   login: string
   senha_hash: string
   papel: Papel
   ativo: boolean
+  situacao?: SituacaoConta | null
+  ultimo_acesso_em?: string | null
+  sessao_geracao?: number | null
   origem: Usuario['origem']
   ocultar_boas_vindas?: boolean | null
 }
 
+const COLUNAS_PEDIDO = [
+  'id',
+  'nome',
+  'primeiro_nome',
+  'sobrenome',
+  'email',
+  'celular',
+  'criado_em',
+  'situacao',
+  'decidido_em',
+  'decidido_por',
+  'papel',
+]
+const OPCIONAIS_PEDIDO = ['primeiro_nome', 'sobrenome', 'papel']
+
 type PedidoRow = {
   id: string
   nome: string
+  primeiro_nome?: string | null
+  sobrenome?: string | null
   email: string
   celular: string
   criado_em: string
   situacao: SituacaoPedido
   decidido_em: string | null
   decidido_por: string | null
+  papel?: Papel | null
 }
 
 type LinkRow = {
@@ -592,28 +711,11 @@ async function lerNuvem(): Promise<Store> {
     return vazio
   }
   return {
-    usuarios: usuarios.map((item) => ({
-      id: item.id,
-      nome: item.nome,
-      email: item.email,
-      celular: item.celular,
-      login: item.login,
-      senhaHash: item.senha_hash,
-      papel: item.papel,
-      ativo: item.ativo,
-      origem: item.origem,
-      ocultarBoasVindas: item.ocultar_boas_vindas === true,
-    })),
-    pedidos: pedidos.map((item) => ({
-      id: item.id,
-      nome: item.nome,
-      email: item.email,
-      celular: item.celular,
-      criadoEm: item.criado_em,
-      situacao: item.situacao,
-      decididoEm: item.decidido_em,
-      decididoPor: item.decidido_por,
-    })),
+    usuarios: usuarios.map((item) => {
+      const publico = usuarioPublicoDe(item)
+      return { ...publico, senhaHash: item.senha_hash }
+    }),
+    pedidos: pedidos.map(pedidoDe),
     links,
     estados,
     logs: logs.reverse().map((item) => ({
@@ -765,7 +867,7 @@ async function gravarLinks(links: LinkAcesso[]) {
 
 const EMAIL_EM_USO = 'Este e-mail já está em uma conta ou em um pedido pendente.'
 const LOGIN_EM_USO = 'Este usuário já existe.'
-const EMAIL_TEM_CONTA = 'Este e-mail já tem conta.'
+const EMAIL_TEM_CONTA = 'Já existe uma conta com este e-mail.'
 const PEDIDO_NAO_PENDENTE = 'Pedido não está pendente.'
 
 function filtro(coluna: string, operador: 'eq' | 'gte' | 'ilike', valor: string) {
@@ -830,14 +932,19 @@ function sobraAdministrador(
 }
 
 async function inserirUsuarioNuvem(linha: Record<string, unknown>) {
-  try {
-    await inserirLinha<{ id: string }>('usuarios', linha, 'id')
-  } catch (erro) {
-    if (colunaQueFalta(erro) !== 'ocultar_boas_vindas') throw erro
-    if (linha.ocultar_boas_vindas === true) throw erro
-    const { ocultar_boas_vindas: _ocultar, ...resto } = linha
-    await inserirLinha<{ id: string }>('usuarios', resto, 'id')
+  let atual = { ...linha }
+  for (let tentativa = 0; tentativa < 8; tentativa++) {
+    try {
+      await inserirLinha<{ id: string }>('usuarios', atual, 'id')
+      return
+    } catch (erro) {
+      const coluna = colunaQueFalta(erro)
+      if (!coluna || !(coluna in atual) || coluna === 'login' || coluna === 'senha_hash') throw erro
+      delete atual[coluna]
+      atual = { ...atual }
+    }
   }
+  throw new Error('Não foi possível criar a conta.')
 }
 
 async function emitirNaNuvem(entrada: {
@@ -928,15 +1035,21 @@ function criarContaLocal(
   ) {
     return EMAIL_EM_USO
   }
+  const nomes = partirNome(entrada.nome)
   store.usuarios.push({
     id: crypto.randomUUID(),
     nome: entrada.nome,
+    primeiroNome: nomes.primeiroNome,
+    sobrenome: nomes.sobrenome,
     email: entrada.email,
     celular: entrada.celular,
     login: entrada.login,
     senhaHash,
     papel: entrada.papel,
     ativo: true,
+    situacao: 'ativa',
+    ultimoAcessoEm: null,
+    sessaoGeracao: 0,
     origem: 'pedido',
     ocultarBoasVindas: false,
   })
@@ -975,7 +1088,13 @@ async function criarContaNuvem(
 
 export async function atualizarConta(
   id: string,
-  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    celular: string | null
+    papel: Papel
+    situacao: SituacaoConta
+  },
   ator: string,
 ) {
   if (!idSeguro(id)) return 'Usuário não encontrado.'
@@ -988,7 +1107,7 @@ export async function atualizarConta(
     evento: 'USER_UPDATED',
     ator,
     mensagem: `${ator} alterou ${resultado.login}.`,
-    detalhe: { papel: entrada.papel, ativo: entrada.ativo },
+    detalhe: { papel: entrada.papel, situacao: entrada.situacao },
   })
   return null
 }
@@ -996,43 +1115,82 @@ export async function atualizarConta(
 function atualizarContaLocal(
   store: Store,
   id: string,
-  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    celular: string | null
+    papel: Papel
+    situacao: SituacaoConta
+  },
 ) {
   const usuario = store.usuarios.find((item) => item.id === id)
   if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
-  const ids = store.usuarios.filter((item) => item.papel === 'administrador' && item.ativo).map((item) => item.id)
-  if (!sobraAdministrador(ids, id, entrada.papel, entrada.ativo)) {
-    return { erro: 'O único administrador ativo não pode ser desativado nem rebaixado.', login: '' }
+  const ids = store.usuarios.filter((item) => item.papel === 'administrador' && item.situacao === 'ativa').map((item) => item.id)
+  const ativa = entrada.situacao === 'ativa'
+  if (!sobraAdministrador(ids, id, entrada.papel, ativa)) {
+    return { erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.', login: '' }
   }
-  usuario.nome = entrada.nome
+  usuario.primeiroNome = entrada.primeiroNome
+  usuario.sobrenome = entrada.sobrenome
+  usuario.nome = nomeCompleto(entrada.primeiroNome, entrada.sobrenome)
   usuario.celular = entrada.celular
   usuario.papel = entrada.papel
-  usuario.ativo = entrada.ativo
+  usuario.situacao = entrada.situacao
+  usuario.ativo = ativa
+  if (!ativa) usuario.sessaoGeracao += 1
   return { erro: null, login: usuario.login }
 }
 
 async function atualizarContaNuvem(
   id: string,
-  entrada: { nome: string; celular: string | null; papel: Papel; ativo: boolean },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    celular: string | null
+    papel: Papel
+    situacao: SituacaoConta
+  },
 ) {
   const usuario = await buscarUsuarioPublicoPorId(id)
   if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
   const ids = await idsAdministradoresAtivos()
-  if (!sobraAdministrador(ids, id, entrada.papel, entrada.ativo)) {
-    return { erro: 'O único administrador ativo não pode ser desativado nem rebaixado.', login: '' }
+  const ativa = entrada.situacao === 'ativa'
+  if (!sobraAdministrador(ids, id, entrada.papel, ativa)) {
+    return { erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.', login: '' }
   }
-  const linhas = await atualizarOnde<{ id: string }>(
-    'usuarios',
-    `${filtro('id', 'eq', id)}&select=id`,
-    {
-      nome: entrada.nome,
-      celular: entrada.celular,
-      papel: entrada.papel,
-      ativo: entrada.ativo,
-    },
-  )
-  if (linhas.length === 0) return { erro: 'Usuário não encontrado.', login: '' }
+  const corpo: Record<string, unknown> = {
+    nome: nomeCompleto(entrada.primeiroNome, entrada.sobrenome),
+    primeiro_nome: entrada.primeiroNome,
+    sobrenome: entrada.sobrenome,
+    celular: entrada.celular,
+    papel: entrada.papel,
+    ativo: ativa,
+    situacao: entrada.situacao,
+  }
+  if (!ativa) corpo.sessao_geracao = usuario.sessaoGeracao + 1
+  await gravarConta(id, corpo)
   return { erro: null, login: usuario.login }
+}
+
+async function gravarConta(id: string, corpo: Record<string, unknown>) {
+  let atual = { ...corpo }
+  for (let tentativa = 0; tentativa < 8; tentativa++) {
+    try {
+      const linhas = await atualizarOnde<{ id: string }>(
+        'usuarios',
+        `${filtro('id', 'eq', id)}&select=id`,
+        atual,
+      )
+      if (linhas.length === 0) throw new Error('Usuário não encontrado.')
+      return
+    } catch (erro) {
+      const coluna = colunaQueFalta(erro)
+      if (!coluna || !(coluna in atual)) throw erro
+      delete atual[coluna]
+      atual = { ...atual }
+    }
+  }
+  throw new Error('Usuário não encontrado.')
 }
 
 export async function trocarSenhaDaConta(id: string, senha: string, ator: string) {
@@ -1109,7 +1267,12 @@ async function excluirContaNuvem(id: string) {
   return { erro: null, login: usuario.login }
 }
 
-export async function registrarPedido(entrada: { nome: string; email: string; celular: string }) {
+export async function registrarPedido(entrada: {
+  primeiroNome: string
+  sobrenome: string
+  email: string
+  celular: string
+}) {
   const erro = supabaseConfigurado()
     ? await registrarPedidoNuvem(entrada)
     : await alterarLocal((store) => registrarPedidoLocal(store, entrada))
@@ -1118,51 +1281,82 @@ export async function registrarPedido(entrada: { nome: string; email: string; ce
     nivel: 'info',
     evento: 'USER_SIGNUP_REQUESTED',
     ator: null,
-    mensagem: `${entrada.nome} pediu acesso.`,
+    mensagem: `${nomeCompleto(entrada.primeiroNome, entrada.sobrenome)} pediu acesso.`,
     detalhe: { email: entrada.email },
   })
   return null
 }
 
-function registrarPedidoLocal(store: Store, entrada: { nome: string; email: string; celular: string }) {
-  const emailEmUso =
-    store.usuarios.some((item) => item.email === entrada.email) ||
-    store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente')
-  if (emailEmUso) return EMAIL_EM_USO
+function registrarPedidoLocal(
+  store: Store,
+  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string },
+) {
+  if (store.usuarios.some((item) => item.email === entrada.email || item.login === entrada.email)) {
+    return EMAIL_TEM_CONTA
+  }
+  if (store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente')) {
+    return EMAIL_EM_USO
+  }
   store.pedidos.push({
     id: crypto.randomUUID(),
-    nome: entrada.nome,
+    nome: nomeCompleto(entrada.primeiroNome, entrada.sobrenome),
+    primeiroNome: entrada.primeiroNome,
+    sobrenome: entrada.sobrenome,
     email: entrada.email,
     celular: entrada.celular,
     criadoEm: new Date().toISOString(),
     situacao: 'pendente',
     decididoEm: null,
     decididoPor: null,
+    papel: 'comum',
   })
   return null
 }
 
-async function registrarPedidoNuvem(entrada: { nome: string; email: string; celular: string }) {
-  if ((await existeEmailExato(entrada.email)) || (await existePedidoPendente(entrada.email))) return EMAIL_EM_USO
+async function registrarPedidoNuvem(entrada: {
+  primeiroNome: string
+  sobrenome: string
+  email: string
+  celular: string
+}) {
+  if ((await existeEmailExato(entrada.email)) || (await existeLogin(entrada.email))) return EMAIL_TEM_CONTA
+  if (await existePedidoPendente(entrada.email)) return EMAIL_EM_USO
   try {
-    await inserirLinha<{ id: string }>(
-      'pedidos_acesso',
-      {
-        id: crypto.randomUUID(),
-        nome: entrada.nome,
-        email: entrada.email,
-        celular: entrada.celular,
-        criado_em: new Date().toISOString(),
-        situacao: 'pendente',
-        decidido_em: null,
-        decidido_por: null,
-      },
-      'id',
-    )
+    await inserirPedido({
+      nome: nomeCompleto(entrada.primeiroNome, entrada.sobrenome),
+      primeiro_nome: entrada.primeiroNome,
+      sobrenome: entrada.sobrenome,
+      email: entrada.email,
+      celular: entrada.celular,
+      situacao: 'pendente',
+      papel: 'comum',
+      decidido_em: null,
+      decidido_por: null,
+    })
   } catch (erro) {
     return traduzirUnico(erro, { pedidos_acesso_email_pendente: EMAIL_EM_USO })
   }
   return null
+}
+
+async function inserirPedido(corpo: Record<string, unknown>) {
+  let atual: Record<string, unknown> = {
+    id: crypto.randomUUID(),
+    criado_em: new Date().toISOString(),
+    ...corpo,
+  }
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    try {
+      await inserirLinha<{ id: string }>('pedidos_acesso', atual, 'id')
+      return
+    } catch (erro) {
+      const coluna = colunaQueFalta(erro)
+      if (!coluna || !(coluna in atual) || coluna === 'nome' || coluna === 'email') throw erro
+      delete atual[coluna]
+      atual = { ...atual }
+    }
+  }
+  throw new Error('Não foi possível gravar o pedido.')
 }
 
 export async function decidirPedidoOperacao(id: string, acao: 'aprovar' | 'rejeitar', ator: string) {
@@ -1338,7 +1532,7 @@ function prepararRecuperacaoLocal(store: Store, email: string) {
   })
 }
 
-export async function confirmarConta(entrada: { token: string; login: string; senha: string }) {
+export async function confirmarConta(entrada: { token: string; senha: string }) {
   const resultado = supabaseConfigurado()
     ? await confirmarContaNuvem(entrada)
     : await confirmarContaLocal(entrada)
@@ -1355,82 +1549,94 @@ export async function confirmarConta(entrada: { token: string; login: string; se
     evento: 'USER_LOGIN',
     ator: resultado.login,
     mensagem: `${resultado.login} entrou.`,
-    detalhe: { papel: 'comum' },
+    detalhe: { papel: resultado.papel },
   })
   return resultado
 }
 
-async function confirmarContaLocal(entrada: { token: string; login: string; senha: string }) {
+async function confirmarContaLocal(entrada: { token: string; senha: string }) {
   const senhaHash = await hashSenha(entrada.senha)
   return alterarLocal((store) => {
     const link = acharLink(store.links, entrada.token)
     const motivo = motivoDoLink(link, 'confirmacao')
     if (motivo || !link) {
-      return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '' }
+      return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
     }
     const pedido = store.pedidos.find((item) => item.id === link.pedidoId)
     if (!pedido || pedido.situacao !== 'aprovado') {
-      return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+      return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
     }
-    if (store.usuarios.some((item) => item.login === entrada.login)) {
-      return { erro: LOGIN_EM_USO, usuarioId: '', login: '', email: '' }
-    }
-    if (store.usuarios.some((item) => item.email === link.email)) {
-      return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '' }
+    const login = link.email.trim().toLowerCase()
+    if (store.usuarios.some((item) => item.login === login || item.email === login)) {
+      return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '', papel: 'comum' as const }
     }
     const usuarioId = crypto.randomUUID()
+    const papel = pedido.papel === 'administrador' ? 'administrador' : 'comum'
     store.usuarios.push({
       id: usuarioId,
-      nome: pedido.nome,
-      email: link.email,
+      nome: nomeCompleto(pedido.primeiroNome, pedido.sobrenome) || pedido.nome,
+      primeiroNome: pedido.primeiroNome,
+      sobrenome: pedido.sobrenome,
+      email: login,
       celular: pedido.celular,
-      login: entrada.login,
+      login,
       senhaHash,
-      papel: 'comum',
+      papel,
       ativo: true,
+      situacao: 'ativa',
+      ultimoAcessoEm: null,
+      sessaoGeracao: 0,
       origem: 'pedido',
       ocultarBoasVindas: false,
     })
     link.usadoEm = new Date().toISOString()
-    return { erro: null, usuarioId, login: entrada.login, email: link.email }
+    return { erro: null, usuarioId, login, email: login, papel }
   })
 }
 
-async function confirmarContaNuvem(entrada: { token: string; login: string; senha: string }) {
+async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
   const link = await buscarLinkPorToken(entrada.token)
   const motivo = motivoDoLink(link, 'confirmacao')
-  if (motivo || !link) return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '' }
-  if (!link.pedidoId) return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+  if (motivo || !link) return { erro: motivo ?? 'Este link não vale.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
+  if (!link.pedidoId) return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
   const pedido = await buscarPedidoPorId(link.pedidoId)
   if (!pedido || pedido.situacao !== 'aprovado') {
-    return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '' }
+    return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
   }
-  if (await existeLogin(entrada.login)) return { erro: LOGIN_EM_USO, usuarioId: '', login: '', email: '' }
-  if (await existeEmailExato(link.email)) return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '' }
+  const login = link.email.trim().toLowerCase()
+  if ((await existeLogin(login)) || (await existeEmailExato(login))) {
+    return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '', papel: 'comum' as const }
+  }
   const usuarioId = crypto.randomUUID()
   const senhaHash = await hashSenha(entrada.senha)
+  const papel = pedido.papel === 'administrador' ? 'administrador' : 'comum'
   try {
     await inserirUsuarioNuvem({
       id: usuarioId,
-      nome: pedido.nome,
-      email: link.email,
+      nome: nomeCompleto(pedido.primeiroNome, pedido.sobrenome) || pedido.nome,
+      primeiro_nome: pedido.primeiroNome,
+      sobrenome: pedido.sobrenome,
+      email: login,
       celular: pedido.celular,
-      login: entrada.login,
+      login,
       senha_hash: senhaHash,
-      papel: 'comum',
+      papel,
       ativo: true,
+      situacao: 'ativa',
+      sessao_geracao: 0,
       origem: 'pedido',
       ocultar_boas_vindas: false,
     })
   } catch (erro) {
     return {
       erro: traduzirUnico(erro, {
-        usuarios_login_key: LOGIN_EM_USO,
+        usuarios_login_key: EMAIL_TEM_CONTA,
         usuarios_email_unico: EMAIL_TEM_CONTA,
       }),
       usuarioId: '',
       login: '',
       email: '',
+      papel: 'comum' as const,
     }
   }
   try {
@@ -1438,7 +1644,7 @@ async function confirmarContaNuvem(entrada: { token: string; login: string; senh
   } catch (erro) {
     console.error(`[auditoria] falha ao marcar link de confirmação: ${textoDiagnostico(erro)}`)
   }
-  return { erro: null, usuarioId, login: entrada.login, email: link.email }
+  return { erro: null, usuarioId, login, email: login, papel }
 }
 
 export async function trocarSenhaPeloLink(token: string, senha: string) {
@@ -1467,6 +1673,7 @@ async function trocarSenhaPeloLinkLocal(token: string, senha: string) {
       return { erro: 'Esta conta não pode trocar a senha por este link.', login: '' }
     }
     usuario.senhaHash = senhaHash
+    usuario.sessaoGeracao += 1
     link.usadoEm = new Date().toISOString()
     return { erro: null, login: usuario.login }
   })
@@ -1485,17 +1692,124 @@ async function trocarSenhaPeloLinkNuvem(token: string, senha: string) {
   if (!marcado) return { erro: 'Este link já foi usado.', login: '' }
   const senhaHash = await hashSenha(senha)
   try {
-    const linhas = await atualizarOnde<{ id: string }>(
-      'usuarios',
-      `${filtro('id', 'eq', usuario.id)}&select=id`,
-      { senha_hash: senhaHash },
-    )
-    if (linhas.length === 0) return { erro: 'Não foi possível gravar a senha. Peça um link novo.', login: '' }
+    await gravarConta(usuario.id, {
+      senha_hash: senhaHash,
+      sessao_geracao: usuario.sessaoGeracao + 1,
+    })
   } catch (erro) {
     console.error(`[senha] falha ao gravar depois de consumir o link: ${textoDiagnostico(erro)}`)
     return { erro: 'Não foi possível gravar a senha. Peça um link novo.', login: '' }
   }
   return { erro: null, login: usuario.login }
+}
+
+export async function marcarUltimoAcesso(id: string) {
+  if (!idSeguro(id)) return
+  const agora = new Date().toISOString()
+  try {
+    if (!supabaseConfigurado()) {
+      await alterarLocal((store) => {
+        const usuario = store.usuarios.find((item) => item.id === id)
+        if (usuario) usuario.ultimoAcessoEm = agora
+      })
+      return
+    }
+    await atualizarOnde<{ id: string }>('usuarios', `${filtro('id', 'eq', id)}&select=id`, {
+      ultimo_acesso_em: agora,
+    })
+  } catch (erro) {
+    if (colunaQueFalta(erro) === 'ultimo_acesso_em') return
+    console.error(`[login] não foi possível gravar o último acesso: ${textoDiagnostico(erro)}`)
+  }
+}
+
+export async function convidarConta(
+  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  ator: string,
+) {
+  const nome = nomeCompleto(entrada.primeiroNome, entrada.sobrenome)
+  const resultado = supabaseConfigurado()
+    ? await convidarNuvem(entrada, nome, ator)
+    : await alterarLocal((store) => convidarLocal(store, entrada, nome, ator))
+  if (resultado.erro) return resultado
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'USER_APPROVED',
+    ator,
+    mensagem: `${ator} convidou ${entrada.email}.`,
+    detalhe: { email: entrada.email, papel: entrada.papel },
+  })
+  return resultado
+}
+
+function convidarLocal(
+  store: Store,
+  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  nome: string,
+  ator: string,
+) {
+  if (store.usuarios.some((item) => item.email === entrada.email || item.login === entrada.email)) {
+    return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
+  }
+  if (store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente')) {
+    return { erro: EMAIL_EM_USO, email: '', nome: '', token: '' }
+  }
+  const pedidoId = crypto.randomUUID()
+  store.pedidos.push({
+    id: pedidoId,
+    nome,
+    primeiroNome: entrada.primeiroNome,
+    sobrenome: entrada.sobrenome,
+    email: entrada.email,
+    celular: entrada.celular,
+    criadoEm: new Date().toISOString(),
+    situacao: 'aprovado',
+    decididoEm: new Date().toISOString(),
+    decididoPor: ator,
+    papel: entrada.papel,
+  })
+  const token = emitirLink(store.links, {
+    tipo: 'confirmacao',
+    email: entrada.email,
+    pedidoId,
+    usuarioId: null,
+  })
+  return { erro: null, email: entrada.email, nome, token }
+}
+
+async function convidarNuvem(
+  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  nome: string,
+  ator: string,
+) {
+  if ((await existeEmailExato(entrada.email)) || (await existeLogin(entrada.email))) {
+    return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
+  }
+  if (await existePedidoPendente(entrada.email)) return { erro: EMAIL_EM_USO, email: '', nome: '', token: '' }
+  const pedidoId = crypto.randomUUID()
+  try {
+    await inserirPedido({
+      id: pedidoId,
+      nome,
+      primeiro_nome: entrada.primeiroNome,
+      sobrenome: entrada.sobrenome,
+      email: entrada.email,
+      celular: entrada.celular,
+      situacao: 'aprovado',
+      decidido_em: new Date().toISOString(),
+      decidido_por: ator,
+      papel: entrada.papel,
+    })
+  } catch (erro) {
+    return { erro: traduzirUnico(erro, { pedidos_acesso_email_pendente: EMAIL_EM_USO }), email: '', nome: '', token: '' }
+  }
+  const token = await emitirNaNuvem({
+    tipo: 'confirmacao',
+    email: entrada.email,
+    pedidoId,
+    usuarioId: null,
+  })
+  return { erro: null, email: entrada.email, nome, token }
 }
 
 export async function ocultarBoasVindasDaConta(id: string) {

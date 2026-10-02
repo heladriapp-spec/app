@@ -1,10 +1,10 @@
 import { definirSenhaNova } from '@/app/actions/auth'
 import { AuthShell } from '@/components/auth-shell'
+import { CampoSenha } from '@/components/campo-senha'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { motivoDoLink, tokenInformado } from '@/lib/auth/links'
-import { buscarLinkPorToken } from '@/lib/operacao/store'
+import { partirNome } from '@/lib/auth/politica-senha'
+import { buscarLinkPorToken, buscarUsuarioPublicoPorId } from '@/lib/operacao/store'
 import Link from 'next/link'
 
 export default async function NovaSenhaPage({
@@ -19,6 +19,8 @@ export default async function NovaSenhaPage({
   const token = tokenInformado(bruto)
   const link = token ? await buscarLinkPorToken(token) : null
   const motivo = motivoDoLink(link, 'senha')
+  const usuario = link?.usuarioId ? await buscarUsuarioPublicoPorId(link.usuarioId) : null
+  const nomes = partirNome(usuario?.nome ?? '')
 
   return (
     <AuthShell titulo="Senha nova">
@@ -32,14 +34,13 @@ export default async function NovaSenhaPage({
           {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
           <form action={definirSenhaNova} className="grid gap-3">
             <input type="hidden" name="token" value={token ?? ''} />
-            <div className="grid gap-1.5">
-              <Label htmlFor="senha">Senha nova</Label>
-              <Input id="senha" name="senha" type="password" autoComplete="new-password" required />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="senha2">Repetir senha</Label>
-              <Input id="senha2" name="senha2" type="password" autoComplete="new-password" required />
-            </div>
+            <CampoSenha
+              pessoa={{
+                primeiroNome: usuario?.primeiroNome || nomes.primeiroNome,
+                sobrenome: usuario?.sobrenome || nomes.sobrenome,
+                email: usuario?.email ?? link?.email ?? '',
+              }}
+            />
             <Button type="submit">Gravar senha</Button>
           </form>
         </>

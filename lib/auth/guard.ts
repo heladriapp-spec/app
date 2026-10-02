@@ -6,10 +6,11 @@ import { redirect } from 'next/navigation'
 
 export const usuarioDaSessao = cache(async (): Promise<UsuarioPublico | null> => {
   const jar = await cookies()
-  const id = lerSessao(jar.get(COOKIE_SESSAO)?.value)
-  if (!id) return null
-  const usuario = await buscarUsuarioPublicoPorId(id)
-  if (!usuario?.ativo) return null
+  const sessao = lerSessao(jar.get(COOKIE_SESSAO)?.value)
+  if (!sessao) return null
+  const usuario = await buscarUsuarioPublicoPorId(sessao.userId)
+  if (!usuario || usuario.situacao !== 'ativa') return null
+  if (usuario.sessaoGeracao !== sessao.geracao) return null
   return usuario
 })
 
@@ -25,9 +26,9 @@ export async function requireAdmin() {
   return usuario
 }
 
-export async function gravarSessao(userId: string) {
+export async function gravarSessao(userId: string, geracao = 0) {
   const jar = await cookies()
-  jar.set(COOKIE_SESSAO, emitirSessao(userId), {
+  jar.set(COOKIE_SESSAO, emitirSessao(userId, geracao), {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
