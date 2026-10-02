@@ -52,7 +52,7 @@ async function lerUpload(formData: FormData) {
 }
 
 export async function criarProjeto(formData: FormData) {
-  const admin = await requireAdmin()
+  const usuario = await requireUser()
   const nome = String(formData.get('nome') ?? '').trim()
   const data = lerData(String(formData.get('data') ?? '').trim() || dataHojeISO())
   if (!nome) voltar('/projetos/novo', 'Informe o nome do projeto.')
@@ -74,10 +74,10 @@ export async function criarProjeto(formData: FormData) {
     nome,
     data,
     criadoEm: agora,
-    criadoPor: admin.login,
+    criadoPor: usuario.login,
     atualizadoEm: agora,
-    atualizadoPor: admin.login,
-    participantes: [admin.id],
+    atualizadoPor: usuario.login,
+    participantes: [usuario.id],
     arquivoNome: null,
     arquivoGeradoNome: null,
     concluidoEm: null,
@@ -86,7 +86,7 @@ export async function criarProjeto(formData: FormData) {
     status: rascunho ? 'rascunho' : 'sem_planilha',
     lancamentos: {},
   }
-  if (upload) aplicarPlanilha(projeto, upload.nome, upload.lida, admin.login, rascunho)
+  if (upload) aplicarPlanilha(projeto, upload.nome, upload.lida, usuario.login, rascunho)
 
   let falha: unknown = null
   try {
@@ -113,10 +113,10 @@ export async function criarProjeto(formData: FormData) {
     registrarNo(store, {
       nivel: 'info',
       evento: 'PROJECT_CREATED',
-      ator: admin.login,
+      ator: usuario.login,
       mensagem: rascunho
-        ? `${admin.login} salvou o rascunho “${nome}”.`
-        : `${admin.login} criou o projeto “${nome}”.`,
+        ? `${usuario.login} salvou o rascunho “${nome}”.`
+        : `${usuario.login} criou o projeto “${nome}”.`,
       detalhe: { projeto: id, planilha: Boolean(upload), rascunho },
     })
   })
@@ -148,10 +148,10 @@ export async function removerProjeto(formData: FormData) {
 }
 
 export async function carregarPlanilha(formData: FormData) {
-  const admin = await requireAdmin()
+  const usuario = await requireUser()
   const id = String(formData.get('id') ?? '')
   const projeto = await projetoPorId(id)
-  if (!projeto) voltar('/', 'Projeto não encontrado.')
+  if (!projeto || !podeLancar(usuario.id, usuario.papel, projeto)) redirect('/')
 
   let upload: Awaited<ReturnType<typeof lerUpload>> = null
   try {
@@ -168,7 +168,7 @@ export async function carregarPlanilha(formData: FormData) {
     await alterarProjetos((projetos) => {
       const atual = projetos.find((item) => item.id === id)
       if (!atual) return
-      aplicarPlanilha(atual, upload.nome, upload.lida, admin.login, atual.status === 'rascunho')
+      aplicarPlanilha(atual, upload.nome, upload.lida, usuario.login, atual.status === 'rascunho')
     })
   } catch (erro) {
     falha = erro
@@ -183,8 +183,8 @@ export async function carregarPlanilha(formData: FormData) {
     registrarNo(store, {
       nivel: 'info',
       evento: 'PROJECT_FILE',
-      ator: admin.login,
-      mensagem: `${admin.login} carregou a planilha em “${projeto.nome}”.`,
+      ator: usuario.login,
+      mensagem: `${usuario.login} carregou a planilha em “${projeto.nome}”.`,
       detalhe: { projeto: id },
     })
   })

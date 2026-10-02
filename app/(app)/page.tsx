@@ -31,17 +31,15 @@ export default async function InicioPage({
         titulo="Projetos"
         icone={FolderKanban}
         acoes={
-          usuario.papel === 'administrador' ? (
-            <Link href="/projetos/novo" className={buttonVariants()}>
-              <Plus data-icon="inline-start" />
-              Criar novo projeto
-            </Link>
-          ) : null
+          <Link href="/projetos/novo" className={buttonVariants()}>
+            <Plus data-icon="inline-start" />
+            Criar novo projeto
+          </Link>
         }
       >
         {usuario.papel === 'administrador'
           ? 'Cada trabalho do SESC é um projeto, com a planilha daquele trabalho.'
-          : `${usuario.nome}, estes são os projetos em que você está incluído.`}
+          : `${usuario.nome}, estes são os projetos que você criou.`}
       </CabecalhoPagina>
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
       {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
@@ -49,7 +47,7 @@ export default async function InicioPage({
         <p className="rounded-2xl border bg-card px-5 py-10 text-sm text-muted-foreground shadow-sm">
           {usuario.papel === 'administrador'
             ? 'Nenhum projeto ainda. Crie o primeiro e, se quiser, carregue a planilha do SESC.'
-            : 'Nenhum projeto em que você atua.'}
+            : 'Nenhum projeto seu ainda. Crie o primeiro para começar.'}
         </p>
       ) : (
         <ul className="grid gap-3">

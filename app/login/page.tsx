@@ -20,8 +20,8 @@ export default async function LoginPage({
   return (
     <AuthShell titulo="Entrar">
       <p className="text-sm text-muted-foreground">
-        A operação (usuários, versão, esteira, logs e saúde) fica com o administrador. O
-        lançamento na planilha fica com quem ele incluir.
+        Quem tem conta cria os próprios projetos e vê só esses. A operação (usuários, versão,
+        esteira, logs e saúde) fica com o administrador.
       </p>
       {ok ? <Recado tom="ok">{ok}</Recado> : null}
       {erro ? <Recado tom="erro">{erro}</Recado> : null}

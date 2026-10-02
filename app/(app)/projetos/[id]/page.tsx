@@ -103,8 +103,7 @@ export default async function ProjetoPage({
               ? 'Este projeto está em rascunho. A planilha que você carregar fica amarrada a ele e abre o preenchimento.'
               : 'Este projeto ainda não tem arquivo. A tela de preenchimento abre quando a planilha for carregada.'}
           </p>
-          {usuario.papel === 'administrador' ? (
-            <FormPlanilha action={carregarPlanilha} className="mt-4 grid gap-3">
+          <FormPlanilha action={carregarPlanilha} className="mt-4 grid gap-3">
               <input type="hidden" name="id" value={projeto.id} />
               <div className="grid gap-1.5">
                 <Label htmlFor="arquivo">Arquivo .xlsx</Label>
@@ -118,7 +117,6 @@ export default async function ProjetoPage({
               </div>
               <Button type="submit">Carregar planilha</Button>
             </FormPlanilha>
-          ) : null}
         </div>
       )}
     </div>

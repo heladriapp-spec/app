@@ -5,7 +5,7 @@ import { Recado } from '@/components/recado'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { requireAdmin } from '@/lib/auth/guard'
+import { requireUser } from '@/lib/auth/guard'
 import { dataHojeISO } from '@/lib/planilha/numeros'
 import { FolderPlus, Plus, Save } from 'lucide-react'
 import Link from 'next/link'
@@ -15,7 +15,7 @@ export default async function NovoProjetoPage({
 }: {
   searchParams: Promise<{ erro?: string }>
 }) {
-  await requireAdmin()
+  await requireUser()
   const { erro } = await searchParams
 
   return (
