@@ -16,8 +16,8 @@ export function ArquivoReferencial({
       <h2 className="text-sm font-medium">Arquivo referencial</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Este projeto está amarrado à planilha{' '}
-        <span className="font-medium text-foreground">{projeto.arquivoNome}</span>. O original fica
-        guardado com o projeto. Na conclusão, os dados do banco voltam para uma cópia fiel desse
+        <span className="font-medium text-foreground">{projeto.arquivoNome}</span>. O banco guarda
+        os dados do preenchimento. Na conclusão, esses dados voltam para uma cópia fiel desse
         arquivo.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -36,8 +36,7 @@ export function ArquivoReferencial({
       {projeto.status === 'concluido' && projeto.concluidoEm ? (
         <p className="mt-2 text-xs text-muted-foreground">
           Gerada {dataHoraBR(projeto.concluidoEm)}
-          {projeto.concluidoPor ? ` por ${projeto.concluidoPor}` : ''}. O arquivo gerado também fica
-          no banco.
+          {projeto.concluidoPor ? ` por ${projeto.concluidoPor}` : ''}.
         </p>
       ) : null}
     </section>

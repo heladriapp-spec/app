@@ -2,17 +2,13 @@ import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
 import type { ExtraServico, Lancamento, Projeto, StatusProjeto } from '@/lib/projetos/tipos'
 import {
-  apagarArquivoBanco,
   apagarFora,
-  baixarArquivoBanco,
   baixarPlanilha,
   enviarPlanilha,
-  gravarArquivoBanco,
   gravarTabela,
   lerTabela,
   removerPlanilha,
   supabaseConfigurado,
-  tabelaAusente,
 } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -158,32 +154,13 @@ export function nomeDeDownload(original: string | null) {
 }
 
 export async function lerArquivoDoProjeto(id: string) {
-  if (supabaseConfigurado()) {
-    try {
-      const doBanco = await baixarArquivoBanco(id, 'origem')
-      if (doBanco) return doBanco
-    } catch (erro) {
-      if (!tabelaAusente(erro)) throw erro
-    }
-    return baixarPlanilha(id)
-  }
+  if (supabaseConfigurado()) return baixarPlanilha(id, 'origem')
   return readFile(caminhoDoArquivo(id))
 }
 
-export async function gravarArquivoDoProjeto(id: string, buf: Buffer, nome: string, ator: string) {
+export async function gravarArquivoDoProjeto(id: string, buf: Buffer) {
   if (supabaseConfigurado()) {
-    let noBanco = false
-    try {
-      await gravarArquivoBanco(id, 'origem', nome, buf, ator)
-      noBanco = true
-    } catch (erro) {
-      if (!tabelaAusente(erro)) throw erro
-    }
-    try {
-      await enviarPlanilha(id, buf)
-    } catch (erro) {
-      if (!noBanco) throw erro
-    }
+    await enviarPlanilha(id, 'origem', buf)
     return
   }
   await mkdir(PASTA, { recursive: true })
@@ -191,17 +168,13 @@ export async function gravarArquivoDoProjeto(id: string, buf: Buffer, nome: stri
 }
 
 export async function lerArquivoGerado(id: string) {
-  if (supabaseConfigurado()) {
-    const doBanco = await baixarArquivoBanco(id, 'gerado')
-    if (!doBanco) throw new Error('A planilha gerada não está no banco.')
-    return doBanco
-  }
+  if (supabaseConfigurado()) return baixarPlanilha(id, 'gerado')
   return readFile(caminhoGerado(id))
 }
 
-export async function gravarArquivoGerado(id: string, nome: string, buf: Buffer, ator: string) {
+export async function gravarArquivoGerado(id: string, buf: Buffer) {
   if (supabaseConfigurado()) {
-    await gravarArquivoBanco(id, 'gerado', nome, buf, ator)
+    await enviarPlanilha(id, 'gerado', buf)
     return
   }
   await mkdir(PASTA, { recursive: true })
@@ -219,7 +192,7 @@ async function apagarSeExistir(caminho: string) {
 export async function apagarArquivoGerado(id: string) {
   if (!/^[\w-]+$/.test(id)) return
   if (supabaseConfigurado()) {
-    await apagarArquivoBanco(id, 'gerado')
+    await removerPlanilha(id, 'gerado')
     return
   }
   await apagarSeExistir(caminhoGerado(id))
@@ -228,8 +201,8 @@ export async function apagarArquivoGerado(id: string) {
 export async function apagarArquivoDoProjeto(id: string) {
   if (!/^[\w-]+$/.test(id)) return
   if (supabaseConfigurado()) {
-    await removerPlanilha(id)
-    await apagarArquivoBanco(id)
+    await removerPlanilha(id, 'origem')
+    await removerPlanilha(id, 'gerado')
     return
   }
   await apagarSeExistir(caminhoDoArquivo(id))

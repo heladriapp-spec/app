@@ -43,11 +43,12 @@ export async function apagarFora(tabela: string, coluna: string, ids: string[]) 
   await pedir('DELETE', `/rest/v1/${tabela}?${coluna}=not.in.(${lista})`)
 }
 
-export async function enviarPlanilha(id: string, buf: Buffer) {
-  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao gravar a planilha.')
+export type PapelPlanilha = 'origem' | 'gerado'
+
+export async function enviarPlanilha(id: string, papel: PapelPlanilha, buf: Buffer) {
   await pedir(
     'POST',
-    `/storage/v1/object/${BUCKET}/${id}.xlsx`,
+    `/storage/v1/object/${BUCKET}/${objetoPlanilha(id, papel)}`,
     buf,
     undefined,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -55,53 +56,14 @@ export async function enviarPlanilha(id: string, buf: Buffer) {
   )
 }
 
-export async function baixarPlanilha(id: string) {
-  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao ler a planilha.')
-  const resposta = await pedir('GET', `/storage/v1/object/${BUCKET}/${id}.xlsx`)
+export async function baixarPlanilha(id: string, papel: PapelPlanilha) {
+  const resposta = await pedir('GET', `/storage/v1/object/${BUCKET}/${objetoPlanilha(id, papel)}`)
   return Buffer.from(await resposta.arrayBuffer())
 }
 
-export async function gravarArquivoBanco(
-  id: string,
-  papel: 'origem' | 'gerado',
-  nome: string,
-  buf: Buffer,
-  ator: string,
-) {
-  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao gravar a planilha.')
-  await pedir(
-    'POST',
-    '/rest/v1/projeto_arquivos',
-    [
-      {
-        projeto_id: id,
-        papel,
-        nome,
-        conteudo: buf.toString('base64'),
-        gravado_em: new Date().toISOString(),
-        gravado_por: ator,
-      },
-    ],
-    'resolution=merge-duplicates,return=minimal',
-  )
-}
-
-export async function baixarArquivoBanco(id: string, papel: 'origem' | 'gerado') {
-  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao ler a planilha.')
-  const linhas = await lerTabela<{ conteudo: string | null }>(
-    'projeto_arquivos',
-    `select=conteudo&projeto_id=eq.${id}&papel=eq.${papel}&limit=1`,
-  )
-  const conteudo = linhas[0]?.conteudo
-  if (!conteudo) return null
-  if (conteudo.startsWith('\\x')) return Buffer.from(conteudo.slice(2), 'hex')
-  return Buffer.from(conteudo, 'base64')
-}
-
-export async function apagarArquivoBanco(id: string, papel?: 'origem' | 'gerado') {
+export async function removerPlanilha(id: string, papel: PapelPlanilha) {
   if (!/^[\w-]+$/.test(id)) return
-  const filtro = papel ? `&papel=eq.${papel}` : ''
-  const resposta = await fetch(endereco(`/rest/v1/projeto_arquivos?projeto_id=eq.${id}${filtro}`), {
+  const resposta = await fetch(endereco(`/storage/v1/object/${BUCKET}/${objetoPlanilha(id, papel)}`), {
     method: 'DELETE',
     headers: cabecalhos(),
     cache: 'no-store',
@@ -118,23 +80,9 @@ export async function apagarArquivoBanco(id: string, papel?: 'origem' | 'gerado'
   await resposta.body?.cancel()
 }
 
-export async function removerPlanilha(id: string) {
-  if (!/^[\w-]+$/.test(id)) return
-  const resposta = await fetch(endereco(`/storage/v1/object/${BUCKET}/${id}.xlsx`), {
-    method: 'DELETE',
-    headers: cabecalhos(),
-    cache: 'no-store',
-    redirect: 'manual',
-  })
-  if (resposta.status >= 300 && resposta.status < 400) {
-    throw new Error('O Supabase pediu um redirecionamento. A chave não foi enviada adiante.')
-  }
-  if (resposta.status === 404) {
-    await resposta.body?.cancel()
-    return
-  }
-  if (!resposta.ok) throw await falha(resposta)
-  await resposta.body?.cancel()
+function objetoPlanilha(id: string, papel: PapelPlanilha) {
+  if (!/^[\w-]+$/.test(id)) throw new Error('Identificador inválido ao acessar a planilha.')
+  return papel === 'origem' ? `${id}.xlsx` : `${id}.gerado.xlsx`
 }
 
 export async function pingUsuarios() {
@@ -200,10 +148,6 @@ async function pedir(
   return resposta
 }
 
-export function tabelaAusente(erro: unknown) {
-  return codigoDe(erro) === 'PGRST205'
-}
-
 function colunaAusente(erro: unknown) {
   const codigo = codigoDe(erro)
   if (codigo !== 'PGRST204' && codigo !== '42703') return null
@@ -250,7 +194,6 @@ function mensagemSupabase(status: number, codigo: string, coluna: string, detalh
   }
   if (codigo === 'PGRST205') return 'O Supabase ainda não tem a tabela desta versão.'
   if (codigo === '23514') return 'O Supabase recusou o status do projeto. Falta a atualização do banco.'
-  if (codigo === '22P02') return 'O Supabase recusou o formato da planilha.'
   const curto = detalhe.replace(/\s+/g, ' ').trim().slice(0, 160)
   if (curto && !/key|token|secret|bearer/i.test(curto)) return `Supabase respondeu ${status}: ${curto}`
   return `Supabase respondeu ${status}.`

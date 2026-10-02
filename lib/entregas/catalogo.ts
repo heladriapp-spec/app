@@ -66,7 +66,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     id: 'preenchimento',
     nome: 'Rascunho, arquivo referencial e conclusão',
     resumo:
-      'A planilha enviada fica amarrada ao projeto e guardada com os dados. Dá para salvar em rascunho. Concluir grava os valores do banco numa cópia fiel dessa planilha e guarda o arquivo gerado.',
+      'A planilha enviada fica amarrada ao projeto. O banco guarda os dados do preenchimento. Dá para salvar em rascunho. Concluir grava esses valores numa cópia fiel da planilha.',
     tipo: 'nova_funcionalidade',
     versaoPrevista: '0.5.0',
     versaoEfetiva: '0.5.0',

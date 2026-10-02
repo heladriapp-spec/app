@@ -63,7 +63,7 @@ export async function POST(pedido: Request, contexto: { params: Promise<{ id: st
   const nome = nomeDeDownload(projeto.arquivoNome)
   if (concluir) {
     try {
-      await gravarArquivoGerado(id, nome, arquivo, usuario.login)
+      await gravarArquivoGerado(id, arquivo)
     } catch {
       return texto('Não foi possível gravar a planilha gerada.', 500)
     }

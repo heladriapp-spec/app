@@ -93,7 +93,7 @@ export async function criarProjeto(formData: FormData) {
     await alterarProjetos((projetos) => {
       projetos.push(projeto)
     })
-    if (upload) await gravarArquivoDoProjeto(id, upload.buf, upload.nome, admin.login)
+    if (upload) await gravarArquivoDoProjeto(id, upload.buf)
   } catch (erro) {
     falha = erro
   }
@@ -163,7 +163,7 @@ export async function carregarPlanilha(formData: FormData) {
 
   let falha: unknown = null
   try {
-    await gravarArquivoDoProjeto(id, upload.buf, upload.nome, admin.login)
+    await gravarArquivoDoProjeto(id, upload.buf)
     await apagarArquivoGerado(id)
     await alterarProjetos((projetos) => {
       const atual = projetos.find((item) => item.id === id)
