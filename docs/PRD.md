@@ -458,7 +458,7 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Modernidade nas ações | 0.15.0 | O clique responde no botão: carregando, documento salvo, gerando o arquivo. Efetivo nesta 0.11.0 |
 | Workflow: o autor prepara e envia | 0.12.0 | Preparação, execução e concluído. Projeto novo só nasce com a planilha lida. O autor salva, envia e acompanha sem valores nem arquivo. Efetivo nesta 0.12.0 |
 | Histórico e versões do preenchimento | 1.0.0 | Quem alterou cada campo, exclusão e reinclusão, lista de versões sem copiar o arquivo. O administrador restaura e inclui ou remove participante. Efetivo nesta 1.0.0 |
-| Workflow: assumir, concluir e baixar | 0.13.0 | Quem tem a marca de executor vê a fila e assume. Só o responsável edita e conclui. O autor baixa o arquivo final. Efetivo nesta 1.1.0 |
+| Workflow: assumir, concluir e baixar | 0.13.0 | Quem tem a marca de executor vê a fila e assume. Só o responsável edita e conclui. O autor baixa o arquivo final. A marca é o recorte até o grupo Executor. Efetivo nesta 1.1.0 |
 | Workflow: prévia, devolução e histórico | 0.14.0 | O responsável libera ou recolhe a prévia. O autor lê os valores e não baixa. Devolver pede motivo e tira o responsável. O histórico não copia o formulário. Efetivo nesta 1.2.0 |
 
 ### Ainda na fila

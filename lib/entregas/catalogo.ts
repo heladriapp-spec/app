@@ -248,7 +248,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     id: 'workflow-autor',
     nome: 'Workflow: o autor prepara e envia',
     resumo:
-      'Preparação, execução e concluído substituem os quatro status atuais. Projeto antigo sem arquivo continua abrindo. Projeto novo só nasce com a planilha lida. Salvar não muda a etapa. O autor envia para execução e acompanha sem receber os valores nem o arquivo. Baixar o resultado e alterar um concluído são recusados no servidor. A conta ganha a marca de executor, desligada.',
+      'Preparação, execução e concluído substituem os quatro status atuais. Projeto antigo sem arquivo continua abrindo. Projeto novo só nasce com a planilha lida. Salvar não muda a etapa. O autor envia para execução e acompanha sem receber os valores nem o arquivo. Baixar o resultado e alterar um concluído são recusados no servidor. A conta ganha a marca de executor, desligada. Essa marca é o recorte até o grupo Executor substituí-la.',
     tipo: 'nova_funcionalidade',
     versaoPrevista: '0.12.0',
     versaoEfetiva: '0.12.0',
@@ -263,7 +263,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     id: 'workflow-executor',
     nome: 'Workflow: assumir, concluir e baixar',
     resumo:
-      'Quem tem a marca de executor vê a fila e assume um projeto. Só o responsável edita e conclui. O autor vê o resultado e baixa o arquivo final. Antes de concluído, o download é recusado.',
+      'Quem tem a marca de executor vê a fila e assume um projeto. Só o responsável edita e conclui. O autor vê o resultado e baixa o arquivo final. Antes de concluído, o download é recusado. A marca sai quando o grupo Executor entrar. Assumir, concluir e baixar permanecem.',
     tipo: 'nova_funcionalidade',
     versaoPrevista: '0.13.0',
     versaoEfetiva: '1.1.0',
@@ -336,7 +336,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Rateio automático de material e mão de obra para as colunas F e G da planilha do SESC. Saiu deste corte: a cotação é preenchida no próprio arquivo.',
     tipo: 'nova_funcionalidade',
-    versaoPrevista: '1.2.0',
+    versaoPrevista: 'fora deste corte',
     versaoEfetiva: null,
     statusBase: 'fora_de_escopo',
     implantado: false,
