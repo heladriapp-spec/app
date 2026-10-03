@@ -15,8 +15,11 @@ import {
   ITEM_DE_VOLTA,
   PARTICIPANTE_INCLUIDO,
   PARTICIPANTE_REMOVIDO,
+  PREVIA_LIBERADA,
+  PREVIA_RECOLHIDA,
   PROJETO_ASSUMIDO,
   PROJETO_CONCLUIDO,
+  PROJETO_DEVOLVIDO,
   PROJETO_ENVIADO,
   VERSAO_RESTAURADA,
 } from '@/lib/projetos/frases'
@@ -278,6 +281,7 @@ export async function assumirProjeto(formData: FormData) {
         : 'Não foi possível assumir o projeto.',
     )
   }
+  await registrarEventoProjeto({ projetoId: id, tipo: 'assumido', ator: usuario.login })
   await registrarEvento({
     nivel: 'info',
     evento: 'PROJECT_ASSUMED',
@@ -286,6 +290,97 @@ export async function assumirProjeto(formData: FormData) {
     detalhe: { projeto: id },
   })
   voltar(destino, PROJETO_ASSUMIDO, true)
+}
+
+export async function alternarPrevia(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const acao = String(formData.get('acao') ?? '')
+  const destino = `/projetos/${id || ''}`
+  const liberar = acao === 'liberar'
+  const projeto = await projetoPorId(id, { valores: false })
+  const permissao = liberar ? 'liberar_previa' : acao === 'recolher' ? 'recolher_previa' : null
+  if (!projeto || !permissao || !pode(usuario, projeto, permissao)) {
+    voltar(id ? destino : '/', 'A prévia não está disponível nesta etapa.')
+  }
+  try {
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      { previaLiberada: liberar, atualizadoPor: usuario.login },
+      { status: 'em_execucao' },
+    )
+  } catch (erro) {
+    voltar(
+      destino,
+      erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada
+        ? erro.message
+        : 'Não foi possível alterar a prévia.',
+    )
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: liberar ? 'PROJECT_PREVIEW_OPENED' : 'PROJECT_PREVIEW_CLOSED',
+    ator: usuario.login,
+    mensagem: liberar
+      ? `${usuario.login} liberou a prévia de “${projeto.nome}”.`
+      : `${usuario.login} recolheu a prévia de “${projeto.nome}”.`,
+    detalhe: { projeto: id },
+  })
+  voltar(destino, liberar ? PREVIA_LIBERADA : PREVIA_RECOLHIDA, true)
+}
+
+export async function devolverProjeto(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const destino = `/projetos/${id || ''}`
+  const motivo = String(formData.get('motivo') ?? '').trim().replace(/\s+/g, ' ')
+  const projeto = await projetoPorId(id, { valores: false })
+  if (!projeto || !pode(usuario, projeto, 'devolver')) {
+    voltar(id ? destino : '/', 'Só o responsável devolve um projeto em execução.')
+  }
+  if (motivo.length < 3) voltar(destino, 'Informe o motivo da devolução.')
+  if (motivo.length > 400) voltar(destino, 'O motivo passa de 400 caracteres.')
+  try {
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      {
+        status: 'em_edicao',
+        responsavelId: null,
+        responsavelEm: null,
+        previaLiberada: false,
+        atualizadoPor: usuario.login,
+      },
+      { status: 'em_execucao' },
+    )
+  } catch (erro) {
+    voltar(
+      destino,
+      erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada
+        ? erro.message
+        : 'Não foi possível devolver o projeto.',
+    )
+  }
+  await registrarEventoProjeto({
+    projetoId: id,
+    tipo: 'devolvido',
+    ator: usuario.login,
+    detalhe: { motivo },
+  })
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PROJECT_RETURNED',
+    ator: usuario.login,
+    mensagem: `${usuario.login} devolveu “${projeto.nome}” para preparação.`,
+    detalhe: { projeto: id },
+  })
+  const aindaVe = pode(
+    usuario,
+    { ...projeto, status: 'em_edicao', responsavelId: null, previaLiberada: false },
+    'ver',
+  )
+  voltar(aindaVe ? destino : '/', PROJETO_DEVOLVIDO, true)
 }
 
 async function gravarCotacao(
@@ -375,6 +470,7 @@ async function gravarLancamentos(
     voltar(`/projetos/${id}`, PROJETO_ENVIADO, true)
   }
   if (modo === 'concluir') {
+    await registrarEventoProjeto({ projetoId: id, tipo: 'concluido', ator })
     await registrarEvento({
       nivel: 'info',
       evento: 'PROJECT_CONCLUDED',

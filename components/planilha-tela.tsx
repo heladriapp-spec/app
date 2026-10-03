@@ -42,6 +42,7 @@ export function PlanilhaTela({
   podeExcluir = false,
   etapa = 'preparacao',
   mostrarArquivo = true,
+  somenteLeitura = false,
 }: {
   projeto: Projeto
   linhas: LinhaPlanilha[]
@@ -49,6 +50,7 @@ export function PlanilhaTela({
   podeExcluir?: boolean
   etapa?: 'preparacao' | 'execucao'
   mostrarArquivo?: boolean
+  somenteLeitura?: boolean
 }) {
   const capitulos = capitulosDe(linhas)
   const [valores, setValores] = useState(() => valoresIniciais(projeto, linhas))
@@ -92,7 +94,12 @@ export function PlanilhaTela({
             })
         : null}
       {atual ? (
-    <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
+    <form
+      action={somenteLeitura ? undefined : salvarPreenchimento}
+      data-aviso="silencioso"
+      className="flex flex-col gap-4"
+      onSubmit={somenteLeitura ? (evento) => evento.preventDefault() : undefined}
+    >
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial
         nome={mostrarArquivo ? projeto.arquivoNome : null}
@@ -146,7 +153,12 @@ export function PlanilhaTela({
                 </p>
                 <h2 className="text-xl font-semibold tracking-tight">{item.nome}</h2>
               </div>
-              <Tabela itens={item.itens} valores={valores} onAlterar={alterar} podeExcluir={podeExcluir} />
+              <fieldset
+                disabled={somenteLeitura}
+                className="m-0 min-w-0 border-0 p-0 [&:disabled_input]:text-foreground [&:disabled_input]:opacity-100"
+              >
+                <Tabela itens={item.itens} valores={valores} onAlterar={alterar} podeExcluir={podeExcluir} />
+              </fieldset>
               <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-4 shadow-sm backdrop-blur">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
@@ -163,7 +175,7 @@ export function PlanilhaTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} etapa={etapa} />
+                  {somenteLeitura ? null : <AcoesPreenchimento salvo={salvo} etapa={etapa} />}
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

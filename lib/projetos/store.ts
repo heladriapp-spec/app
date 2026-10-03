@@ -441,7 +441,7 @@ export async function listarProjetos(usuario: { id: string; papel: string }): Pr
   return linhas.map(resumoDaLinha)
 }
 
-const COLUNAS_ARQUIVO = 'id,criado_por,status,arquivo_nome,arquivo_gerado_nome,responsavel_id'
+const COLUNAS_ARQUIVO = 'id,criado_por,status,arquivo_nome,arquivo_gerado_nome,responsavel_id,previa_liberada'
 
 export async function projetoParaArquivo(id: string) {
   if (!idSeguro(id)) return null
@@ -456,11 +456,21 @@ export async function projetoParaArquivo(id: string) {
       arquivoNome: projeto.arquivoNome,
       arquivoGeradoNome: projeto.arquivoGeradoNome,
       responsavelId: projeto.responsavelId,
+      previaLiberada: projeto.previaLiberada,
     }
   }
   const [linhas, vinculos] = await Promise.all([
     lerTabela<
-      Pick<ProjetoRow, 'id' | 'criado_por' | 'status' | 'arquivo_nome' | 'arquivo_gerado_nome' | 'responsavel_id'>
+      Pick<
+        ProjetoRow,
+        | 'id'
+        | 'criado_por'
+        | 'status'
+        | 'arquivo_nome'
+        | 'arquivo_gerado_nome'
+        | 'responsavel_id'
+        | 'previa_liberada'
+      >
     >(
       'projetos',
       `select=${COLUNAS_ARQUIVO}&id=eq.${id}&limit=1`,
@@ -477,6 +487,7 @@ export async function projetoParaArquivo(id: string) {
     arquivoNome: item.arquivo_nome,
     arquivoGeradoNome: item.arquivo_gerado_nome,
     responsavelId: item.responsavel_id ?? null,
+    previaLiberada: item.previa_liberada === true,
   }
 }
 

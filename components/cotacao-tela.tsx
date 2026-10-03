@@ -75,6 +75,7 @@ export function CotacaoTela({
   podeExcluir = false,
   etapa = 'preparacao',
   mostrarArquivo = true,
+  somenteLeitura = false,
 }: {
   projetoId: string
   arquivoNome: string | null
@@ -84,6 +85,7 @@ export function CotacaoTela({
   podeExcluir?: boolean
   etapa?: 'preparacao' | 'execucao'
   mostrarArquivo?: boolean
+  somenteLeitura?: boolean
 }) {
   const capitulos = montarCapitulos(cotacao)
   const [valores, setValores] = useState(iniciais)
@@ -130,7 +132,12 @@ export function CotacaoTela({
               </form>
             ))
         : null}
-    <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
+    <form
+      action={somenteLeitura ? undefined : salvarPreenchimento}
+      data-aviso="silencioso"
+      className="flex flex-col gap-4"
+      onSubmit={somenteLeitura ? (evento) => evento.preventDefault() : undefined}
+    >
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
       <FaixaCapitulos
@@ -184,7 +191,10 @@ export function CotacaoTela({
               </div>
               {item.origem === 'leitura' ? <Instrucoes cotacao={cotacao} /> : null}
               {item.origem === 'materiais' || item.origem === 'mao' ? (
-                <>
+                <fieldset
+                  disabled={somenteLeitura}
+                  className="m-0 min-w-0 border-0 p-0 [&:disabled_input]:text-foreground [&:disabled_input]:opacity-100"
+                >
                   <LegendaPreenchimento />
                   <ListaItens
                     itens={itens}
@@ -195,7 +205,7 @@ export function CotacaoTela({
                     onAlterar={alterar}
                     podeExcluir={podeExcluir}
                   />
-                </>
+                </fieldset>
               ) : null}
               {item.origem === 'resumo' ? (
                 <Resumo cotacao={cotacao} iniciais={valores} totais={totais} />
@@ -217,7 +227,7 @@ export function CotacaoTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} etapa={etapa} />
+                  {somenteLeitura ? null : <AcoesPreenchimento salvo={salvo} etapa={etapa} />}
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

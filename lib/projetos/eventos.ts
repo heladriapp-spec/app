@@ -7,6 +7,9 @@ const ARQUIVO = path.join(PASTA, 'eventos.json')
 
 export type TipoEventoProjeto =
   | 'submetido'
+  | 'assumido'
+  | 'devolvido'
+  | 'concluido'
   | 'campo'
   | 'excluiu_item'
   | 'reincluiu_item'
@@ -24,7 +27,10 @@ export type DetalheEvento = {
   origem?: number
   usuarioId?: string
   login?: string
+  motivo?: string
 }
+
+const TRILHA = new Set<TipoEventoProjeto>(['submetido', 'assumido', 'devolvido', 'concluido'])
 
 export type EventoProjeto = {
   id: string
@@ -80,6 +86,24 @@ export async function apagarEventosLocais(projetoId: string) {
     await mkdir(PASTA, { recursive: true })
     await writeFile(ARQUIVO, JSON.stringify({ eventos: lista }, null, 2), { mode: 0o600 })
   })
+}
+
+export function fraseDaTrilha(evento: Pick<EventoProjeto, 'tipo' | 'ator' | 'detalhe'>) {
+  if (evento.tipo === 'submetido') return `${evento.ator} enviou para execução.`
+  if (evento.tipo === 'assumido') return `${evento.ator} assumiu.`
+  if (evento.tipo === 'devolvido') {
+    const motivo = evento.detalhe.motivo?.trim()
+    return motivo
+      ? `${evento.ator} devolveu para preparação. Motivo: ${motivo}`
+      : `${evento.ator} devolveu para preparação.`
+  }
+  if (evento.tipo === 'concluido') return `${evento.ator} concluiu.`
+  return ''
+}
+
+export async function listarTrilha(projetoId: string) {
+  const eventos = await listarEventosProjeto(projetoId)
+  return eventos.filter((item) => TRILHA.has(item.tipo))
 }
 
 export async function listarEventosProjeto(projetoId: string) {

@@ -121,6 +121,7 @@ function alvoDaLista(projeto: ProjetoLista) {
     arquivoNome: projeto.arquivoNome,
     arquivoGeradoNome: null,
     responsavelId: null,
+    previaLiberada: false,
   }
 }
 

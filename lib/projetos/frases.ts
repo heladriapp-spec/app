@@ -7,6 +7,12 @@ export const PROJETO_ASSUMIDO = 'Você assumiu este projeto.'
 
 export const PROJETO_CONCLUIDO = 'Projeto concluído. O arquivo final pode ser baixado.'
 
+export const PREVIA_LIBERADA = 'Prévia liberada. O autor lê os valores e não baixa.'
+
+export const PREVIA_RECOLHIDA = 'Prévia recolhida.'
+
+export const PROJETO_DEVOLVIDO = 'Projeto devolvido para preparação.'
+
 export const ITEM_FORA = 'Item excluído deste trabalho.'
 
 export const ITEM_DE_VOLTA = 'Item reincluído.'

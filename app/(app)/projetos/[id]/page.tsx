@@ -1,4 +1,4 @@
-import { assumirProjeto, carregarPlanilha } from '@/app/actions/projetos'
+import { alternarPrevia, assumirProjeto, carregarPlanilha, devolverProjeto } from '@/app/actions/projetos'
 import { FormPlanilha } from '@/components/form-planilha'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { CotacaoTela } from '@/components/cotacao-tela'
@@ -14,8 +14,10 @@ import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
 import { HistoricoPreenchimento } from '@/components/historico-preenchimento'
+import { TrilhaProjeto } from '@/components/trilha-projeto'
 import { ParticipantesProjeto } from '@/components/participantes-projeto'
 import { pode } from '@/lib/projetos/acesso'
+import { listarTrilha } from '@/lib/projetos/eventos'
 import { DOCUMENTO_SALVO, PROJETO_ENVIADO } from '@/lib/projetos/frases'
 import { listarEntradasParticipante, listarVersoesVisiveis } from '@/lib/projetos/historico'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
@@ -39,6 +41,7 @@ export default async function ProjetoPage({
   if (!pode(usuario, base, 'ver')) redirect('/')
 
   const verValores = pode(usuario, base, 'ver_valores')
+  const podeEditar = pode(usuario, base, 'editar')
   const podeAssumir = pode(usuario, base, 'assumir')
   const projeto = verValores ? await projetoPorId(id) : base
   if (!projeto) notFound()
@@ -50,11 +53,16 @@ export default async function ProjetoPage({
   const lida = verValores ? await planilhaDoProjeto(projeto).catch(() => null) : null
   const baixarResultado = pode(usuario, projeto, 'baixar_gerado')
   const baixarOrigem = pode(usuario, projeto, 'baixar_origem')
+  const podeDevolver = pode(usuario, projeto, 'devolver')
+  const podeLiberar = pode(usuario, projeto, 'liberar_previa')
+  const podeRecolher = pode(usuario, projeto, 'recolher_previa')
+  const somenteLeitura = verValores && !podeEditar
   const etapa = projeto.status === 'em_execucao' ? 'execucao' : 'preparacao'
-  const [versoes, entradas, contas] = await Promise.all([
+  const [versoes, entradas, contas, trilha] = await Promise.all([
     verHistorico ? listarVersoesVisiveis(id) : Promise.resolve([]),
     listarEntradasParticipante(id),
     listarUsuariosPublicos(),
+    listarTrilha(id),
   ])
   const resumoConta = (conta: { id: string; nome: string; login: string }) => ({
     id: conta.id,
@@ -110,11 +118,20 @@ export default async function ProjetoPage({
       ) : null}
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
       {avisos.ok && avisos.ok !== DOCUMENTO_SALVO ? <Recado tom="ok">{avisos.ok}</Recado> : null}
+      {podeDevolver || podeLiberar || podeRecolher ? (
+        <ExecucaoResponsavel
+          id={projeto.id}
+          liberar={podeLiberar}
+          recolher={podeRecolher}
+        />
+      ) : null}
       {lida ? (
         <p className="text-sm text-muted-foreground">
-          {etapa === 'execucao'
-            ? 'Salvar guarda o trabalho e mantém o projeto em execução. Concluir gera o arquivo final. Antes disso, o download é recusado.'
-            : 'Salvar guarda o trabalho e mantém o projeto em preparação. Se um campo mudou, entra uma versão.'}
+          {somenteLeitura
+            ? 'Prévia liberada. Você lê os valores. O arquivo não é baixado nesta etapa.'
+            : etapa === 'execucao'
+              ? 'Salvar guarda o trabalho e mantém o projeto em execução. Concluir gera o arquivo final. Antes disso, o download é recusado.'
+              : 'Salvar guarda o trabalho e mantém o projeto em preparação. Se um campo mudou, entra uma versão.'}
         </p>
       ) : null}
       <ParticipantesProjeto
@@ -135,6 +152,7 @@ export default async function ProjetoPage({
           podeExcluir={podeExcluirItem}
           etapa={etapa}
           mostrarArquivo={baixarOrigem}
+          somenteLeitura={somenteLeitura}
         />
       ) : lida ? (
         <div className="flex flex-col gap-3">
@@ -151,6 +169,7 @@ export default async function ProjetoPage({
             podeExcluir={podeExcluirItem}
             etapa={etapa}
             mostrarArquivo={baixarOrigem}
+            somenteLeitura={somenteLeitura}
           />
         </div>
       ) : verValores ? (
@@ -185,9 +204,56 @@ export default async function ProjetoPage({
           temResponsavel={Boolean(projeto.responsavelId)}
         />
       )}
+      <TrilhaProjeto eventos={trilha} />
       {verHistorico ? (
         <HistoricoPreenchimento projetoId={projeto.id} versoes={versoes} podeRestaurar={podeRestaurar} />
       ) : null}
+    </div>
+  )
+}
+
+function ExecucaoResponsavel({
+  id,
+  liberar,
+  recolher,
+}: {
+  id: string
+  liberar: boolean
+  recolher: boolean
+}) {
+  return (
+    <div className="flex max-w-lg flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm">
+      <div>
+        <h2 className="text-sm font-medium">Prévia e devolução</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Liberar a prévia mostra os valores ao autor, sem download. Devolver volta para preparação,
+          pede o motivo e tira você da responsabilidade.
+        </p>
+      </div>
+      {liberar || recolher ? (
+        <form action={alternarPrevia}>
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="acao" value={liberar ? 'liberar' : 'recolher'} />
+          <Button type="submit" variant="outline">
+            {liberar ? 'Liberar prévia' : 'Recolher prévia'}
+          </Button>
+        </form>
+      ) : null}
+      <form action={devolverProjeto} className="grid gap-2">
+        <Label htmlFor={`motivo-${id}`}>Motivo da devolução</Label>
+        <textarea
+          id={`motivo-${id}`}
+          name="motivo"
+          required
+          minLength={3}
+          maxLength={400}
+          rows={3}
+          className="rounded-lg border border-input bg-transparent px-3 py-2 text-sm"
+        />
+        <Button type="submit" variant="outline">
+          Devolver
+        </Button>
+      </form>
     </div>
   )
 }
@@ -227,7 +293,7 @@ function Acompanhamento({
         : 'Este projeto está concluído. O preenchimento não pode mais ser alterado.'
       : status === 'em_execucao'
         ? temResponsavel
-          ? 'Um responsável assumiu o projeto. O formulário e o arquivo não vêm nesta tela.'
+          ? 'Um responsável assumiu o projeto. Os valores aparecem aqui se a prévia for liberada. O arquivo não vem nesta tela.'
           : 'Aguardando um responsável. O formulário e o arquivo não vêm nesta tela.'
         : 'Este projeto está em preparação com o autor.'
 
