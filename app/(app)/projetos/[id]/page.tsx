@@ -13,9 +13,13 @@ import { Label } from '@/components/ui/label'
 import { requireUser } from '@/lib/auth/guard'
 import { dataHoraBR } from '@/lib/formato'
 import { dataProjetoBR } from '@/lib/planilha/numeros'
+import { HistoricoPreenchimento } from '@/components/historico-preenchimento'
+import { ParticipantesProjeto } from '@/components/participantes-projeto'
 import { pode } from '@/lib/projetos/acesso'
 import { DOCUMENTO_SALVO, PROJETO_ENVIADO } from '@/lib/projetos/frases'
+import { listarEntradasParticipante, listarVersoesVisiveis } from '@/lib/projetos/historico'
 import { planilhaDoProjeto, projetoPorId, valoresDaCotacao } from '@/lib/projetos/store'
+import { listarUsuariosPublicos } from '@/lib/operacao/store'
 import { ArrowLeft, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -38,8 +42,28 @@ export default async function ProjetoPage({
   const projeto = verValores ? await projetoPorId(id) : base
   if (!projeto) notFound()
   const podeRemover = pode(usuario, projeto, 'excluir')
+  const verHistorico = pode(usuario, projeto, 'ver_historico')
+  const podeRestaurar = pode(usuario, projeto, 'restaurar')
+  const podeExcluirItem = pode(usuario, projeto, 'excluir_item')
+  const podeGerir = pode(usuario, projeto, 'gerir_participantes')
   const lida = verValores ? await planilhaDoProjeto(projeto).catch(() => null) : null
   const baixarResultado = pode(usuario, projeto, 'baixar_gerado')
+  const [versoes, entradas, contas] = await Promise.all([
+    verHistorico ? listarVersoesVisiveis(id) : Promise.resolve([]),
+    listarEntradasParticipante(id),
+    listarUsuariosPublicos(),
+  ])
+  const resumoConta = (conta: { id: string; nome: string; login: string }) => ({
+    id: conta.id,
+    nome: conta.nome,
+    login: conta.login,
+  })
+  const pessoas = contas.filter((conta) => projeto.participantes.includes(conta.id)).map(resumoConta)
+  const candidatos = podeGerir
+    ? contas
+        .filter((conta) => conta.ativo && !projeto.participantes.includes(conta.id))
+        .map(resumoConta)
+    : []
 
   return (
     <div className="flex flex-col gap-5">
@@ -85,9 +109,17 @@ export default async function ProjetoPage({
       {avisos.ok && avisos.ok !== DOCUMENTO_SALVO ? <Recado tom="ok">{avisos.ok}</Recado> : null}
       {lida ? (
         <p className="text-sm text-muted-foreground">
-          Salvar guarda o trabalho e mantém o projeto em preparação.
+          Salvar guarda o trabalho e mantém o projeto em preparação. Se um campo mudou, entra uma versão.
         </p>
       ) : null}
+      <ParticipantesProjeto
+        projetoId={projeto.id}
+        autorLogin={projeto.criadoPor}
+        pessoas={pessoas}
+        candidatos={candidatos}
+        entradas={entradas}
+        podeGerir={podeGerir}
+      />
       {lida?.formato === 'cotacao' && lida.cotacao ? (
         <CotacaoTela
           projetoId={projeto.id}
@@ -95,6 +127,7 @@ export default async function ProjetoPage({
           cotacao={lida.cotacao}
           iniciais={valoresDaCotacao(projeto, lida.cotacao)}
           salvo={avisos.ok === DOCUMENTO_SALVO}
+          podeExcluir={podeExcluirItem}
         />
       ) : lida ? (
         <div className="flex flex-col gap-3">
@@ -104,7 +137,12 @@ export default async function ProjetoPage({
             {lida.capa.evento ? ` · ${lida.capa.evento}` : ''}
             {lida.capa.unidade ? ` · ${lida.capa.unidade}` : ''}
           </p>
-          <PlanilhaTela projeto={projeto} linhas={lida.linhas} salvo={avisos.ok === DOCUMENTO_SALVO} />
+          <PlanilhaTela
+            projeto={projeto}
+            linhas={lida.linhas}
+            salvo={avisos.ok === DOCUMENTO_SALVO}
+            podeExcluir={podeExcluirItem}
+          />
         </div>
       ) : verValores ? (
         <div className="max-w-lg rounded-2xl border bg-card p-5 shadow-sm">
@@ -135,6 +173,9 @@ export default async function ProjetoPage({
           baixar={baixarResultado ? projeto.id : null}
         />
       )}
+      {verHistorico ? (
+        <HistoricoPreenchimento projetoId={projeto.id} versoes={versoes} podeRestaurar={podeRestaurar} />
+      ) : null}
     </div>
   )
 }

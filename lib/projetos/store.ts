@@ -2,6 +2,7 @@ import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import { canonizarStatus, opcoesStatus } from '@/lib/planilha/status'
 import { lerPlanilha, type CapaPlanilha, type PlanilhaLida } from '@/lib/planilha/ler'
 import { apagarEventosLocais } from '@/lib/projetos/eventos'
+import { apagarVersoesLocais } from '@/lib/projetos/historico'
 import {
   statusCanonico,
   type ExtraServico,
@@ -206,6 +207,36 @@ function corpoDoPatch(id: string, patch: PatchProjeto, agora: string) {
 }
 
 /** Só o JSON local. No Supabase, a exclusão do usuário cai na cascata já existente. */
+export async function incluirParticipanteNoProjeto(projetoId: string, usuarioId: string) {
+  if (!idSeguro(projetoId) || !idSeguro(usuarioId)) throw new Error('Participante inválido.')
+  if (!supabaseConfigurado()) {
+    await alterarIndice((projetos) => {
+      const projeto = projetos.find((item) => item.id === projetoId)
+      if (!projeto) throw new Error('Projeto não encontrado.')
+      if (!projeto.participantes.includes(usuarioId)) projeto.participantes.push(usuarioId)
+    })
+    return
+  }
+  await inserirLinha(
+    'projeto_participantes',
+    { projeto_id: projetoId, usuario_id: usuarioId },
+    'projeto_id,usuario_id',
+  )
+}
+
+export async function removerParticipanteDoProjeto(projetoId: string, usuarioId: string) {
+  if (!idSeguro(projetoId) || !idSeguro(usuarioId)) throw new Error('Participante inválido.')
+  if (!supabaseConfigurado()) {
+    await alterarIndice((projetos) => {
+      const projeto = projetos.find((item) => item.id === projetoId)
+      if (!projeto) throw new Error('Projeto não encontrado.')
+      projeto.participantes = projeto.participantes.filter((item) => item !== usuarioId)
+    })
+    return
+  }
+  await apagarOnde('projeto_participantes', `projeto_id=eq.${projetoId}&usuario_id=eq.${usuarioId}`)
+}
+
 export async function tirarParticipanteLocal(usuarioId: string) {
   if (supabaseConfigurado()) return
   if (!idSeguro(usuarioId)) return
@@ -289,6 +320,7 @@ export async function apagarProjeto(id: string) {
       if (indice >= 0) projetos.splice(indice, 1)
     })
     await apagarEventosLocais(id)
+    await apagarVersoesLocais(id)
     return
   }
   await apagarOnde('projetos', `id=eq.${id}`)
@@ -559,7 +591,14 @@ export function valoresDaCotacao(projeto: Projeto, cotacao: CotacaoLida) {
   const opcoes = opcoesStatus(cotacao.legenda)
   const iniciais: Record<
     string,
-    { valor: string; observacao: string; valorBase: string; extras: ExtraServico[]; status: string }
+    {
+      valor: string
+      observacao: string
+      valorBase: string
+      extras: ExtraServico[]
+      status: string
+      excluido?: boolean
+    }
   > = {}
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
     const salvo = projeto.lancamentos[item.codigo]
@@ -572,6 +611,7 @@ export function valoresDaCotacao(projeto: Projeto, cotacao: CotacaoLida) {
           valorBase: salvo.valorBase ?? '',
           extras: salvo.extras ?? [],
           status,
+          excluido: salvo.excluido === true,
         }
       : {
           valor: item.valor,
@@ -579,6 +619,7 @@ export function valoresDaCotacao(projeto: Projeto, cotacao: CotacaoLida) {
           valorBase: '',
           extras: [],
           status,
+          excluido: false,
         }
   }
   return iniciais

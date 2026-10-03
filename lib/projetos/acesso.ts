@@ -22,6 +22,10 @@ export type AcaoProjeto =
   | 'excluir'
   | 'baixar_origem'
   | 'baixar_gerado'
+  | 'ver_historico'
+  | 'excluir_item'
+  | 'restaurar'
+  | 'gerir_participantes'
 
 export function ehAutor(usuario: { login: string }, projeto: { criadoPor: string }) {
   return projeto.criadoPor === usuario.login
@@ -42,5 +46,8 @@ export function pode(usuario: AtorProjeto, projeto: AlvoProjeto, acao: AcaoProje
   if (acao === 'baixar_gerado') {
     return projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome) && (autor || admin)
   }
+  if (acao === 'ver_historico') return autor && projeto.status === 'em_edicao'
+  if (acao === 'excluir_item' || acao === 'restaurar') return admin && autor && projeto.status === 'em_edicao'
+  if (acao === 'gerir_participantes') return admin && projeto.status !== 'concluido'
   return false
 }

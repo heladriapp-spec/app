@@ -6,8 +6,18 @@ import { lerPlanilha } from '@/lib/planilha/ler'
 import { AVISO_PLANILHA_GRANDE, LIMITE_PLANILHA } from '@/lib/planilha/limite'
 import { dataHojeISO } from '@/lib/planilha/numeros'
 import { lerLancamentosAnexo, lerLancamentosCotacao } from '@/lib/planilha/preenchimento'
+import { itemDaPlanilha, preservarExcluidos, rotulosDaPlanilha } from '@/lib/projetos/estado'
 import { registrarEventoProjeto } from '@/lib/projetos/eventos'
-import { DOCUMENTO_SALVO, PROJETO_ENVIADO } from '@/lib/projetos/frases'
+import {
+  DOCUMENTO_SALVO,
+  ITEM_FORA,
+  ITEM_DE_VOLTA,
+  PARTICIPANTE_INCLUIDO,
+  PARTICIPANTE_REMOVIDO,
+  PROJETO_ENVIADO,
+  VERSAO_RESTAURADA,
+} from '@/lib/projetos/frases'
+import { estadoDaVersao, lancamentosRestaurados, registrarVersao } from '@/lib/projetos/historico'
 import {
   apagarArquivoDoProjeto,
   apagarArquivoGerado,
@@ -15,12 +25,15 @@ import {
   aplicarPlanilha,
   gravarArquivoDoProjeto,
   gravarProjeto,
+  incluirParticipanteNoProjeto,
   inserirProjeto,
   planilhaDoProjeto,
   ProjetoDesatualizado,
   projetoPorId,
+  removerParticipanteDoProjeto,
   TransicaoRecusada,
 } from '@/lib/projetos/store'
+import { buscarUsuarioPublicoPorId } from '@/lib/operacao/store'
 import type { CotacaoLida } from '@/lib/planilha/cotacao'
 import type { Projeto } from '@/lib/projetos/tipos'
 import { registrarEvento } from '@/lib/operacao/store'
@@ -212,14 +225,15 @@ export async function salvarPreenchimento(formData: FormData) {
   const lida = await planilhaDoProjeto(projeto)
   if (!lida) voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
 
+  const rotulos = rotulosDaPlanilha(lida)
   if (lida.formato === 'cotacao' && lida.cotacao) {
-    await gravarCotacao(id, projeto, usuario.login, formData, lida.cotacao, submeter)
+    await gravarCotacao(id, projeto, usuario.login, formData, lida.cotacao, submeter, rotulos)
     return
   }
 
   const lido = lerLancamentosAnexo(formData, lida.linhas)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, projeto, usuario.login, lido.lancamentos, submeter)
+  await gravarLancamentos(id, projeto, usuario.login, lido.lancamentos, submeter, rotulos)
 }
 
 async function gravarCotacao(
@@ -229,18 +243,20 @@ async function gravarCotacao(
   formData: FormData,
   cotacao: CotacaoLida,
   submeter: boolean,
+  rotulos: Record<string, string>,
 ) {
   const lido = lerLancamentosCotacao(formData, cotacao)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, projeto, ator, lido.lancamentos, submeter)
+  await gravarLancamentos(id, projeto, ator, lido.lancamentos, submeter, rotulos)
 }
 
 async function gravarLancamentos(
   id: string,
   antes: Projeto,
   ator: string,
-  lancamentos: Projeto['lancamentos'],
+  recebidos: Projeto['lancamentos'],
   submeter: boolean,
+  rotulos: Record<string, string>,
 ) {
   if (antes.status === 'concluido') {
     voltar(`/projetos/${id}`, 'Um projeto concluído não pode ser alterado.')
@@ -248,6 +264,7 @@ async function gravarLancamentos(
   if (antes.status !== 'em_edicao') {
     voltar(`/projetos/${id}`, 'Este projeto já foi enviado.')
   }
+  const lancamentos = preservarExcluidos(antes.lancamentos, recebidos)
   const agora = new Date().toISOString()
   try {
     await gravarProjeto(
@@ -269,6 +286,13 @@ async function gravarLancamentos(
     }
     throw erro
   }
+  await registrarVersao({
+    projetoId: id,
+    ator,
+    antes: antes.lancamentos,
+    depois: lancamentos,
+    rotulos,
+  })
   if (submeter) {
     await registrarEventoProjeto({ projetoId: id, tipo: 'submetido', ator })
     voltar(`/projetos/${id}`, PROJETO_ENVIADO, true)
@@ -281,4 +305,138 @@ async function gravarLancamentos(
     detalhe: { projeto: id },
   })
   voltar(`/projetos/${id}`, DOCUMENTO_SALVO, true)
+}
+
+export async function excluirItem(formData: FormData) {
+  await marcarItem(formData, true)
+}
+
+export async function reincluirItem(formData: FormData) {
+  await marcarItem(formData, false)
+}
+
+async function marcarItem(formData: FormData, fora: boolean) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const item = String(formData.get('item') ?? '')
+  const projeto = await projetoPorId(id)
+  if (!projeto || !pode(usuario, projeto, 'excluir_item')) {
+    voltar(`/projetos/${id || ''}`, 'Só o administrador que criou o projeto, em preparação, exclui um item.')
+  }
+  if (!/^[\w.:-]{1,80}$/.test(item)) voltar(`/projetos/${id}`, 'Item não encontrado.')
+  const lida = await planilhaDoProjeto(projeto)
+  if (!lida || !itemDaPlanilha(lida, item)) voltar(`/projetos/${id}`, 'Item não encontrado.')
+  const atual = projeto.lancamentos[item]
+  if (Boolean(atual?.excluido) === fora) {
+    voltar(`/projetos/${id}`, fora ? 'Este item já está fora do trabalho.' : 'Este item já está no trabalho.')
+  }
+  const proximo: Projeto['lancamentos'][string] = {
+    ...(atual ?? { quantidade: '', material: '', maoDeObra: '' }),
+  }
+  if (fora) proximo.excluido = true
+  else delete proximo.excluido
+  const lancamentos = { ...projeto.lancamentos, [item]: proximo }
+  try {
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      { lancamentos, atualizadoPor: usuario.login },
+      { status: 'em_edicao' },
+    )
+  } catch (erro) {
+    if (erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada) {
+      voltar(`/projetos/${id}`, erro.message)
+    }
+    throw erro
+  }
+  await registrarVersao({
+    projetoId: id,
+    ator: usuario.login,
+    antes: projeto.lancamentos,
+    depois: lancamentos,
+    rotulos: rotulosDaPlanilha(lida),
+  })
+  voltar(`/projetos/${id}`, fora ? ITEM_FORA : ITEM_DE_VOLTA, true)
+}
+
+export async function restaurarVersao(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const numero = Number(formData.get('numero') ?? '')
+  const projeto = await projetoPorId(id)
+  if (!projeto || !pode(usuario, projeto, 'restaurar')) {
+    voltar(`/projetos/${id || ''}`, 'Só o administrador que criou o projeto, em preparação, restaura uma versão.')
+  }
+  const versao = await estadoDaVersao(id, numero)
+  if (!versao) voltar(`/projetos/${id}`, 'Versão não encontrada.')
+  const lida = await planilhaDoProjeto(projeto)
+  const lancamentos = lancamentosRestaurados(projeto.lancamentos, versao.estado)
+  try {
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      { lancamentos, atualizadoPor: usuario.login },
+      { status: 'em_edicao' },
+    )
+  } catch (erro) {
+    if (erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada) {
+      voltar(`/projetos/${id}`, erro.message)
+    }
+    throw erro
+  }
+  await registrarVersao({
+    projetoId: id,
+    ator: usuario.login,
+    antes: projeto.lancamentos,
+    depois: lancamentos,
+    rotulos: lida ? rotulosDaPlanilha(lida) : {},
+    restauradaDe: numero,
+  })
+  voltar(`/projetos/${id}`, VERSAO_RESTAURADA, true)
+}
+
+export async function incluirParticipante(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const usuarioId = String(formData.get('usuarioId') ?? '')
+  const projeto = await projetoPorId(id, { valores: false })
+  if (!projeto || !pode(usuario, projeto, 'gerir_participantes')) {
+    voltar(`/projetos/${id || ''}`, 'Só o administrador inclui participante, e não num projeto concluído.')
+  }
+  const conta = await buscarUsuarioPublicoPorId(usuarioId)
+  if (!conta || !conta.ativo) voltar(`/projetos/${id}`, 'Escolha uma conta ativa.')
+  if (projeto.participantes.includes(conta.id)) voltar(`/projetos/${id}`, 'Essa pessoa já está no projeto.')
+  await incluirParticipanteNoProjeto(id, conta.id)
+  await registrarEventoProjeto({
+    projetoId: id,
+    tipo: 'participante_incluido',
+    ator: usuario.login,
+    detalhe: { usuarioId: conta.id, login: conta.login },
+  })
+  voltar(`/projetos/${id}`, PARTICIPANTE_INCLUIDO, true)
+}
+
+export async function removerParticipante(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const usuarioId = String(formData.get('usuarioId') ?? '')
+  const projeto = await projetoPorId(id, { valores: false })
+  if (!projeto || !pode(usuario, projeto, 'gerir_participantes')) {
+    voltar(`/projetos/${id || ''}`, 'Só o administrador remove participante, e não num projeto concluído.')
+  }
+  const conta = await buscarUsuarioPublicoPorId(usuarioId)
+  if (!conta || !projeto.participantes.includes(conta.id)) {
+    voltar(`/projetos/${id}`, 'Essa pessoa não está no projeto.')
+  }
+  if (conta.login === projeto.criadoPor) {
+    voltar(`/projetos/${id}`, 'O autor do projeto permanece no projeto.')
+  }
+  await removerParticipanteDoProjeto(id, conta.id)
+  await registrarEventoProjeto({
+    projetoId: id,
+    tipo: 'participante_removido',
+    ator: usuario.login,
+    detalhe: { usuarioId: conta.id, login: conta.login },
+  })
+  voltar(`/projetos/${id}`, PARTICIPANTE_REMOVIDO, true)
 }

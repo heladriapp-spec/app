@@ -35,6 +35,10 @@ function aplicarCotacao(
   if (!xml) return
   for (const item of itens) {
     const salvo = lancamentos[item.codigo]
+    if (salvo?.excluido) {
+      xml = removerLinha(xml, item.linha)
+      continue
+    }
     if (!salvo || !item.colunaValor) continue
     const unitario = lerNumeroBR(salvo.valor ?? '')
     if (unitario != null) {
@@ -67,12 +71,24 @@ function aplicarAnexo(
   for (const linha of linhas) {
     if (linha.grupo) continue
     const salvo = lancamentos[String(linha.linha)]
+    if (salvo?.excluido) {
+      xml = removerLinha(xml, linha.linha)
+      continue
+    }
     if (!salvo) continue
     xml = escreverSeNumero(xml, `E${linha.linha}`, salvo.quantidade)
     xml = escreverSeNumero(xml, `F${linha.linha}`, salvo.material)
     xml = escreverSeNumero(xml, `G${linha.linha}`, salvo.maoDeObra)
   }
   pasta.arquivos.set(caminho, Buffer.from(xml))
+}
+
+function removerLinha(xml: string, numero: number) {
+  if (!Number.isInteger(numero) || numero < 1) return xml
+  const re = new RegExp(
+    `<row\\b[^>]*\\br="${numero}"(?!\\d)[^>]*/>|<row\\b[^>]*\\br="${numero}"(?!\\d)[^>]*>[\\s\\S]*?</row>`,
+  )
+  return xml.replace(re, '')
 }
 
 function escreverSeNumero(xml: string, ref: string, texto: string) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { salvarPreenchimento } from '@/app/actions/projetos'
+import { excluirItem, reincluirItem, salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ type ValorItem = {
   valorBase: string
   extras: ExtraServico[]
   status: string
+  excluido?: boolean
 }
 
 type Valores = Record<string, ValorItem>
@@ -71,12 +72,14 @@ export function CotacaoTela({
   cotacao,
   iniciais,
   salvo = false,
+  podeExcluir = false,
 }: {
   projetoId: string
   arquivoNome: string | null
   cotacao: CotacaoLida
   iniciais: Valores
   salvo?: boolean
+  podeExcluir?: boolean
 }) {
   const capitulos = montarCapitulos(cotacao)
   const [valores, setValores] = useState(iniciais)
@@ -102,12 +105,27 @@ export function CotacaoTela({
         valorBase: prev[codigo]?.valorBase ?? '',
         extras: prev[codigo]?.extras ?? [],
         status: prev[codigo]?.status ?? '',
+        excluido: prev[codigo]?.excluido,
         ...campo,
       },
     }))
   }
 
+  const itens = [...cotacao.materiais, ...cotacao.maoDeObra]
+  const fora = itens.filter((item) => valores[item.codigo]?.excluido)
+
   return (
+    <div className="flex flex-col gap-4">
+      {podeExcluir
+        ? itens
+            .filter((item) => !valores[item.codigo]?.excluido)
+            .map((item) => (
+              <form key={item.codigo} id={idFormulario(item.codigo)} action={excluirItem}>
+                <input type="hidden" name="id" value={projetoId} />
+                <input type="hidden" name="item" value={item.codigo} />
+              </form>
+            ))
+        : null}
     <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projetoId} />
       <ConclusaoProjeto cotacao={cotacao} valores={valores} />
@@ -127,12 +145,13 @@ export function CotacaoTela({
           const indice = capitulos.findIndex((capitulo) => capitulo.id === item.id)
           const anterior = indice > 0 ? capitulos[indice - 1] : null
           const proximo = indice < capitulos.length - 1 ? capitulos[indice + 1] : null
-          const itens =
+          const itens = (
             item.origem === 'materiais'
               ? cotacao.materiais.filter((linha) => linha.grupo === item.grupo)
               : item.origem === 'mao'
                 ? cotacao.maoDeObra.filter((linha) => linha.grupo === item.grupo)
                 : []
+          ).filter((linha) => !valores[linha.codigo]?.excluido)
           const subtotal = itens.reduce((acc, linha) => acc + (totais.get(linha.codigo) ?? 0), 0)
           return (
             <section
@@ -170,6 +189,7 @@ export function CotacaoTela({
                     valores={valores}
                     totais={totais}
                     onAlterar={alterar}
+                    podeExcluir={podeExcluir}
                   />
                 </>
               ) : null}
@@ -211,7 +231,35 @@ export function CotacaoTela({
         })}
       </div>
     </form>
+      {fora.length > 0 ? (
+        <section className="flex flex-col gap-2 rounded-2xl border bg-card p-5 shadow-sm">
+          <h2 className="text-sm font-medium">Itens fora deste trabalho</h2>
+          <ul className="flex flex-col gap-2">
+            {fora.map((item) => (
+              <li key={item.codigo} className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  {item.codigo} · {item.titulo}
+                </span>
+                {podeExcluir ? (
+                  <form action={reincluirItem}>
+                    <input type="hidden" name="id" value={projetoId} />
+                    <input type="hidden" name="item" value={item.codigo} />
+                    <Button type="submit" variant="outline" size="xs">
+                      Reincluir
+                    </Button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   )
+}
+
+function idFormulario(item: string) {
+  return `item-fora-${item.replace(/[^\w-]/g, '-')}`
 }
 
 const ICONE_KICKER: Record<string, LucideIcon> = {
@@ -367,7 +415,7 @@ function classeChip(tom: TomCapitulo, ativo: boolean) {
 
 function tomDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores): TomCapitulo {
   if (capitulo.origem !== 'materiais' && capitulo.origem !== 'mao') return 'neutro'
-  const itens = itensDoCapitulo(capitulo, cotacao)
+  const itens = itensDoCapitulo(capitulo, cotacao).filter((item) => !valores[item.codigo]?.excluido)
   if (itens.length === 0) return 'neutro'
   const divergente = itens.some(
     (item) => chaveStatus(valores[item.codigo]?.status || item.status) === 'DIVERGENTE',
@@ -378,7 +426,7 @@ function tomDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valore
 }
 
 function adesaoDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida, valores: Valores) {
-  const itens = itensDoCapitulo(capitulo, cotacao)
+  const itens = itensDoCapitulo(capitulo, cotacao).filter((item) => !valores[item.codigo]?.excluido)
   if (itens.length === 0) return null
   return adesaoDe(itens.map((item) => valores[item.codigo]?.status || item.status))
 }
@@ -408,9 +456,9 @@ function itensDoCapitulo(capitulo: Capitulo, cotacao: CotacaoLida) {
 }
 
 function statusesDoProjeto(cotacao: CotacaoLida, valores: Valores) {
-  return [...cotacao.materiais, ...cotacao.maoDeObra].map(
-    (item) => valores[item.codigo]?.status || item.status,
-  )
+  return [...cotacao.materiais, ...cotacao.maoDeObra]
+    .filter((item) => !valores[item.codigo]?.excluido)
+    .map((item) => valores[item.codigo]?.status || item.status)
 }
 
 function ConclusaoProjeto({ cotacao, valores }: { cotacao: CotacaoLida; valores: Valores }) {
@@ -534,6 +582,7 @@ function ListaItens({
   valores,
   totais,
   onAlterar,
+  podeExcluir,
 }: {
   itens: ItemCotacao[]
   origem: 'materiais' | 'mao'
@@ -541,6 +590,7 @@ function ListaItens({
   valores: Valores
   totais: Map<string, number | null>
   onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
+  podeExcluir: boolean
 }) {
   const opcoes = opcoesStatus(legenda)
   return (
@@ -558,6 +608,7 @@ function ListaItens({
           opcoes={opcoes}
           total={totais.get(item.codigo) ?? null}
           onAlterar={onAlterar}
+          podeExcluir={podeExcluir}
         />
       ))}
     </div>
@@ -575,6 +626,7 @@ function ItemCard({
   opcoes,
   total,
   onAlterar,
+  podeExcluir,
 }: {
   item: ItemCotacao
   origem: 'materiais' | 'mao'
@@ -586,6 +638,7 @@ function ItemCard({
   opcoes: OpcaoStatus[]
   total: number | null
   onAlterar: (codigo: string, campo: Partial<ValorItem>) => void
+  podeExcluir: boolean
 }) {
   const valorId = `valor-${item.codigo}`
   const obsId = `obs-${item.codigo}`
@@ -651,12 +704,19 @@ function ItemCard({
               <p className="text-xs font-medium tracking-wide text-primary">{item.codigo}</p>
               <h4 className="font-medium leading-snug">{item.titulo}</h4>
             </div>
-            <SeletorStatus
-              codigo={item.codigo}
-              status={status}
-              opcoes={opcoes}
-              onEscolher={(proximo) => onAlterar(item.codigo, { status: proximo })}
-            />
+            <span className="inline-flex items-center gap-2">
+              {podeExcluir ? (
+                <Button type="submit" form={idFormulario(item.codigo)} variant="outline" size="xs">
+                  Excluir
+                </Button>
+              ) : null}
+              <SeletorStatus
+                codigo={item.codigo}
+                status={status}
+                opcoes={opcoes}
+                onEscolher={(proximo) => onAlterar(item.codigo, { status: proximo })}
+              />
+            </span>
           </header>
           {item.detalhe ? <p className="text-sm leading-relaxed text-muted-foreground">{item.detalhe}</p> : null}
           {item.local ? (
@@ -904,7 +964,7 @@ function Resumo({
   const geral = materiais + mao
   const contagem = contarStatus([...cotacao.materiais, ...cotacao.maoDeObra], iniciais)
   const semValor = [...cotacao.materiais, ...cotacao.maoDeObra].filter(
-    (item) => !(iniciais[item.codigo]?.valor ?? '').trim(),
+    (item) => !iniciais[item.codigo]?.excluido && !(iniciais[item.codigo]?.valor ?? '').trim(),
   ).length
 
   return (
@@ -1145,7 +1205,12 @@ function gruposDe(itens: ItemCotacao[]) {
 function totaisDe(cotacao: CotacaoLida, iniciais: Valores) {
   const porItem = new Map<string, number | null>()
   for (const item of [...cotacao.materiais, ...cotacao.maoDeObra]) {
-    porItem.set(item.codigo, totalDoItem(item.quantidade, iniciais[item.codigo]?.valor ?? ''))
+    porItem.set(
+      item.codigo,
+      iniciais[item.codigo]?.excluido
+        ? null
+        : totalDoItem(item.quantidade, iniciais[item.codigo]?.valor ?? ''),
+    )
   }
   return porItem
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { salvarPreenchimento } from '@/app/actions/projetos'
+import { excluirItem, reincluirItem, salvarPreenchimento } from '@/app/actions/projetos'
 import { AcoesPreenchimento } from '@/components/acoes-preenchimento'
 import { NotaArquivoReferencial } from '@/components/arquivo-referencial'
 import { Button } from '@/components/ui/button'
@@ -39,18 +39,26 @@ export function PlanilhaTela({
   projeto,
   linhas,
   salvo = false,
+  podeExcluir = false,
 }: {
   projeto: Projeto
   linhas: LinhaPlanilha[]
   salvo?: boolean
+  podeExcluir?: boolean
 }) {
   const capitulos = capitulosDe(linhas)
   const [valores, setValores] = useState(() => valoresIniciais(projeto, linhas))
   const [aberto, setAberto] = useState(capitulos[0]?.id ?? '')
   const [indo, setIndo] = useState<string | null>(null)
   const [pendente, iniciar] = useTransition()
-  const atual = capitulos.find((item) => item.id === aberto) ?? capitulos[0]
-  if (!atual) return null
+  const fora = linhas.filter((linha) => !linha.grupo && valores[String(linha.linha)]?.excluido)
+  const capitulosVisiveis = capitulos
+    .map((capitulo) => ({
+      ...capitulo,
+      itens: capitulo.itens.filter((linha) => !valores[String(linha.linha)]?.excluido),
+    }))
+    .filter((capitulo) => capitulo.itens.length > 0)
+  const atual = capitulosVisiveis.find((item) => item.id === aberto) ?? capitulosVisiveis[0]
 
   function ir(id: string) {
     setIndo(id)
@@ -65,6 +73,21 @@ export function PlanilhaTela({
   }
 
   return (
+    <div className="flex flex-col gap-4">
+      {podeExcluir
+        ? linhas
+            .filter((linha) => !linha.grupo && !valores[String(linha.linha)]?.excluido)
+            .map((linha) => {
+              const chave = String(linha.linha)
+              return (
+                <form key={chave} id={idFormulario(chave)} action={excluirItem}>
+                  <input type="hidden" name="id" value={projeto.id} />
+                  <input type="hidden" name="item" value={chave} />
+                </form>
+              )
+            })
+        : null}
+      {atual ? (
     <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial
@@ -74,7 +97,7 @@ export function PlanilhaTela({
       <nav aria-label="Capítulos" className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">Verde, preenchido. Laranja, ainda falta valor.</p>
         <div className="flex gap-2.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
-          {capitulos.map((item, indice) => {
+          {capitulosVisiveis.map((item, indice) => {
             const preenchido = capituloPreenchido(item, valores)
             const ativo = item.id === atual.id
             return (
@@ -105,9 +128,9 @@ export function PlanilhaTela({
         </div>
       </nav>
       <div className="flex flex-col gap-4">
-        {capitulos.map((item, indice) => {
-          const anterior = indice > 0 ? capitulos[indice - 1] : null
-          const proximo = indice < capitulos.length - 1 ? capitulos[indice + 1] : null
+        {capitulosVisiveis.map((item, indice) => {
+          const anterior = indice > 0 ? capitulosVisiveis[indice - 1] : null
+          const proximo = indice < capitulosVisiveis.length - 1 ? capitulosVisiveis[indice + 1] : null
           return (
             <section
               key={item.id}
@@ -115,11 +138,11 @@ export function PlanilhaTela({
             >
               <div>
                 <p className="text-xs text-muted-foreground">
-                  {indice + 1} de {capitulos.length}
+                  {indice + 1} de {capitulosVisiveis.length}
                 </p>
                 <h2 className="text-xl font-semibold tracking-tight">{item.nome}</h2>
               </div>
-              <Tabela itens={item.itens} valores={valores} onAlterar={alterar} />
+              <Tabela itens={item.itens} valores={valores} onAlterar={alterar} podeExcluir={podeExcluir} />
               <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 px-4 py-4 shadow-sm backdrop-blur">
                 {anterior ? (
                   <Button type="button" variant="outline" onClick={() => ir(anterior.id)}>
@@ -154,17 +177,50 @@ export function PlanilhaTela({
         })}
       </div>
     </form>
+      ) : (
+        <p className="text-sm text-muted-foreground">Todos os itens saíram deste trabalho.</p>
+      )}
+      {fora.length > 0 ? (
+        <section className="flex flex-col gap-2 rounded-2xl border bg-card p-5 shadow-sm">
+          <h2 className="text-sm font-medium">Itens fora deste trabalho</h2>
+          <ul className="flex flex-col gap-2">
+            {fora.map((linha) => (
+              <li key={linha.linha} className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  {linha.codigo} · {linha.descricao}
+                </span>
+                {podeExcluir ? (
+                  <form action={reincluirItem}>
+                    <input type="hidden" name="id" value={projeto.id} />
+                    <input type="hidden" name="item" value={String(linha.linha)} />
+                    <Button type="submit" variant="outline" size="xs">
+                      Reincluir
+                    </Button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   )
+}
+
+function idFormulario(item: string) {
+  return `item-fora-${item.replace(/[^\w-]/g, '-')}`
 }
 
 function Tabela({
   itens,
   valores,
   onAlterar,
+  podeExcluir,
 }: {
   itens: LinhaPlanilha[]
   valores: Record<string, Lancamento>
   onAlterar: (chave: string, campo: Partial<Lancamento>) => void
+  podeExcluir: boolean
 }) {
   const somas = itens.reduce(
     (acc, linha) => {
@@ -193,6 +249,7 @@ function Tabela({
             <th className="px-3 py-3 font-medium">Total material</th>
             <th className="px-3 py-3 font-medium">Total mão de obra</th>
             <th className="px-3 py-3 font-medium">Total da linha</th>
+            {podeExcluir ? <th className="px-3 py-3 font-medium"> </th> : null}
           </tr>
         </thead>
         <tbody>
@@ -244,13 +301,20 @@ function Tabela({
                 <td className="px-3 py-3 text-right tabular-nums">{texto(totais.totalMaterial)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{texto(totais.totalMao)}</td>
                 <td className="px-3 py-3 text-right tabular-nums">{texto(totais.total)}</td>
+                {podeExcluir ? (
+                  <td className="px-3 py-3">
+                    <Button type="submit" form={idFormulario(chave)} variant="outline" size="xs">
+                      Excluir
+                    </Button>
+                  </td>
+                ) : null}
               </tr>
             )
           })}
         </tbody>
         <tfoot>
           <tr className="border-t font-medium">
-            <td className="px-3 py-3" colSpan={8}>
+            <td className="px-3 py-3" colSpan={podeExcluir ? 9 : 8}>
               Total do capítulo
             </td>
             <td className="px-3 py-3 text-right tabular-nums">{formatarNumeroBR(somas.material)}</td>

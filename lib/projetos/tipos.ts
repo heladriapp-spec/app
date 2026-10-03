@@ -32,6 +32,8 @@ export type Lancamento = {
   extras?: ExtraServico[]
   /** Classificação do levantamento escolhida na tela. */
   status?: string
+  /** Saiu da tela e do arquivo gerado. O fato permanece no histórico. */
+  excluido?: boolean
 }
 
 export type Projeto = {

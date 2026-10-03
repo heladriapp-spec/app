@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A próxima da fila é o executor assumir, concluir e baixar. Excluir linha e o histórico de versões continuam na fila. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A próxima da fila continua o executor assumir, concluir e baixar. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -196,6 +196,8 @@ Eventos mínimos:
 Cada um desses eventos gera uma versão numerada do estado da planilha (valores preenchidos e itens excluídos). Dá para abrir a lista de versões e ver, entre uma versão e a anterior, o que mudou.
 
 A versão atual é a que o botão Concluir e baixar usa. Uma versão antiga pode ser consultada. Restaurar uma versão antiga é ação do administrador: o estado atual passa a ser o daquela versão, e a restauração entra no histórico como versão nova. O histórico anterior não é reescrito.
+
+Na 1.0.0 a versão guarda os campos preenchidos e as linhas fora, não o `.xlsx`. Salvar cria versão só quando algum campo mudou. Quem não vê os valores também não vê essa lista. Excluir, reincluir e restaurar ficam com o administrador que é o autor, com o projeto em preparação. Incluir e remover participante é do administrador, enquanto o projeto não está concluído. Quem preenche nesta etapa continua sendo o autor.
 
 ### 6.8 Extra no item de serviço
 
@@ -439,13 +441,13 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Erro inesperado para quem usa | 0.16.0 | Falha não prevista vira Erro inesperado. Consulte o administrador. Efetivo nesta 0.10.0 |
 | Modernidade nas ações | 0.15.0 | O clique responde no botão: carregando, documento salvo, gerando o arquivo. Efetivo nesta 0.11.0 |
 | Workflow: o autor prepara e envia | 0.12.0 | Preparação, execução e concluído. Projeto novo só nasce com a planilha lida. O autor salva, envia e acompanha sem valores nem arquivo. Efetivo nesta 0.12.0 |
+| Histórico e versões do preenchimento | 1.0.0 | Quem alterou cada campo, exclusão e reinclusão, lista de versões sem copiar o arquivo. O administrador restaura e inclui ou remove participante. Efetivo nesta 1.0.0 |
 
 ### Ainda na fila
 
 1. Workflow: assumir, concluir e baixar. Quem tem a marca de executor vê a fila e assume. O autor vê o resultado e baixa o arquivo final.
 2. Workflow: prévia, devolução e histórico de quem enviou, assumiu, devolveu e concluiu.
-3. Histórico e versões do preenchimento: quem alterou cada campo, exclusão e reinclusão de linha, lista de versões. Incluir e remover participante do projeto continua neste mesmo corte e ainda não tem tela.
-4. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+3. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 
