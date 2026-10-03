@@ -3,7 +3,7 @@ import { HeartPulse, Rocket, ScrollText, Shield, Workflow } from 'lucide-react'
 import Link from 'next/link'
 
 const ITENS = [
-  { href: '/administracao', label: 'Administração', icon: Shield },
+  { href: '/administracao', label: 'Gestão de acessos', icon: Shield },
   { href: '/administracao/implementacoes', label: 'Implantações', icon: Rocket },
   { href: '/administracao/esteira', label: 'Esteira', icon: Workflow },
   { href: '/administracao/logs', label: 'Logs', icon: ScrollText },

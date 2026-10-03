@@ -7,6 +7,7 @@ import {
   reenviarNotificacao,
 } from '@/app/actions/usuarios'
 import { usuarioDaSessao } from '@/lib/auth/guard'
+import { AcessosNav } from '@/components/acessos-nav'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { GestaoAtalhos } from '@/components/gestao-atalhos'
 import { NotaOperacao } from '@/components/nota-operacao'
@@ -16,7 +17,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { dataHoraBR } from '@/lib/formato'
-import { listarAtoresComLogin, listarPedidos, listarUsuariosPublicos } from '@/lib/operacao/store'
+import { rotuloDiretiva } from '@/lib/acessos/regras'
+import { listarAtoresComLogin, listarGrupos, listarPedidos, listarUsuariosPublicos } from '@/lib/operacao/store'
 import { Shield } from 'lucide-react'
 
 export default async function AdministracaoPage({
@@ -26,11 +28,13 @@ export default async function AdministracaoPage({
 }) {
   const { erro, ok, excluir } = await searchParams
   const sessao = await usuarioDaSessao()
-  const [usuarios, pedidos, quemEntrou] = await Promise.all([
+  const [usuarios, pedidos, quemEntrou, grupos] = await Promise.all([
     listarUsuariosPublicos(),
     listarPedidos(),
     listarAtoresComLogin(),
+    listarGrupos(),
   ])
+  const gruposComDiretiva = grupos.filter((grupo) => grupo.diretiva)
   const adminsAtivos = usuarios.filter((item) => item.papel === 'administrador' && item.ativo)
   const pendentes = pedidos.filter((item) => item.situacao === 'pendente')
   const historico = pedidos.filter((item) => item.situacao !== 'pendente')
@@ -51,9 +55,10 @@ export default async function AdministracaoPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <CabecalhoPagina titulo="Administração" icone={Shield} acoes={<GestaoAtalhos atual="/administracao" />}>
+      <CabecalhoPagina titulo="Gestão de acessos" icone={Shield} acoes={<GestaoAtalhos atual="/administracao" />}>
         <NotaOperacao />
       </CabecalhoPagina>
+      <AcessosNav atual="/administracao" />
 
       {ok ? <Recado tom="ok">{ok}</Recado> : null}
       {erro ? <Recado tom="erro">{erro}</Recado> : null}
@@ -155,23 +160,35 @@ export default async function AdministracaoPage({
             <Input id="novo-celular" name="celular" required />
           </div>
           <div className="grid gap-1">
-            <Label htmlFor="novo-papel">Papel</Label>
+            <Label htmlFor="novo-login">Login</Label>
+            <Input id="novo-login" name="login" autoComplete="off" placeholder="Se vazio, o e-mail é o login" />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="novo-grupo">Grupo</Label>
             <select
-              id="novo-papel"
-              name="papel"
-              defaultValue="comum"
+              id="novo-grupo"
+              name="grupoId"
+              required
+              defaultValue={gruposComDiretiva.find((grupo) => grupo.diretiva === 'acesso_comum')?.id}
               className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
             >
-              <option value="comum">Usuário comum</option>
-              <option value="administrador">Administrador</option>
+              {gruposComDiretiva.map((grupo) => (
+                <option key={grupo.id} value={grupo.id}>
+                  {grupo.nome} · {rotuloDiretiva(grupo.diretiva)}
+                </option>
+              ))}
             </select>
           </div>
+          <label className="flex items-center gap-2 text-sm" htmlFor="novo-executor">
+            <input id="novo-executor" type="checkbox" name="executor" value="sim" />
+            Incluir também no Executor
+          </label>
           <div className="flex items-end">
             <Button type="submit">Enviar convite</Button>
           </div>
         </form>
         <p className="text-xs text-muted-foreground">
-          O e-mail vira o login. A pessoa define a senha no link. Você não escolhe essa senha.
+          E-mail e celular são obrigatórios. O login pode ser outro. A pessoa define a senha no link. Você não escolhe essa senha.
         </p>
       </section>
 
@@ -201,8 +218,14 @@ export default async function AdministracaoPage({
                     <td className="px-3 py-2">{usuario.celular ?? '—'}</td>
                     <td className="px-3 py-2">
                       <span className="flex flex-wrap items-center gap-2">
-                        {usuario.papel === 'administrador' ? 'Administrador' : 'Usuário comum'}
-                        {usuario.noGrupoExecutor ? <Badge>Executor</Badge> : null}
+                        {usuario.papel === 'administrador' ? 'Administrador' : 'Acesso comum'}
+                        {grupos
+                          .filter((grupo) => grupo.membros.includes(usuario.id))
+                          .map((grupo) => (
+                            <Badge key={grupo.id} variant="outline">
+                              {grupo.nome}
+                            </Badge>
+                          ))}
                       </span>
                     </td>
                     <td className="px-3 py-2">
@@ -240,18 +263,23 @@ export default async function AdministracaoPage({
                             name="celular"
                             defaultValue={usuario.celular ?? ''}
                           />
-                          <Label htmlFor={`papel-${usuario.id}`}>Papel</Label>
-                          <select
-                            id={`papel-${usuario.id}`}
-                            name="papel"
-                            defaultValue={usuario.papel}
-                            disabled={unico}
-                            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                          >
-                            <option value="administrador">Administrador</option>
-                            <option value="comum">Usuário comum</option>
-                          </select>
-                          {unico ? <input type="hidden" name="papel" value="administrador" /> : null}
+                          <fieldset className="grid gap-1">
+                            <legend className="text-sm">Grupos</legend>
+                            {grupos.map((grupo) => (
+                              <label key={grupo.id} className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  name="grupo"
+                                  value={grupo.id}
+                                  defaultChecked={grupo.membros.includes(usuario.id)}
+                                />
+                                {grupo.nome}
+                                <span className="text-xs text-muted-foreground">
+                                  {rotuloDiretiva(grupo.diretiva)}
+                                </span>
+                              </label>
+                            ))}
+                          </fieldset>
                           <Label htmlFor={`situacao-${usuario.id}`}>Situação</Label>
                           <select
                             id={`situacao-${usuario.id}`}
@@ -265,18 +293,8 @@ export default async function AdministracaoPage({
                             <option value="desativada">Desativada</option>
                           </select>
                           {unico ? <input type="hidden" name="situacao" value="ativa" /> : null}
-                          <label className="flex items-center gap-2 text-sm" htmlFor={`grupo-${usuario.id}`}>
-                            <input
-                              id={`grupo-${usuario.id}`}
-                              type="checkbox"
-                              name="grupoExecutor"
-                              value="sim"
-                              defaultChecked={usuario.noGrupoExecutor}
-                            />
-                            Grupo Executor
-                          </label>
                           <p className="text-xs text-muted-foreground">
-                            Inclui a conta no grupo Executor. O grupo é da aplicação. Quem está nele vê a fila e pode assumir. Não escolhe o responsável de um projeto.
+                            A conta precisa de um grupo com diretiva. O Executor não é diretiva: quem está nele vê a fila e pode assumir.
                           </p>
                           <Button type="submit" size="sm">
                             Gravar

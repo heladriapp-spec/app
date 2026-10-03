@@ -12,7 +12,7 @@ const trabalho: NavGroup = {
 const operacao: NavGroup = {
   label: 'Operação',
   items: [
-    { href: '/administracao', label: 'Administração', id: 'administracao' },
+    { href: '/administracao', label: 'Gestão de acessos', id: 'administracao' },
     { href: '/administracao/implementacoes', label: 'Implantações', id: 'implementacoes' },
     { href: '/administracao/esteira', label: 'Esteira', id: 'esteira' },
     { href: '/administracao/logs', label: 'Logs', id: 'logs' },

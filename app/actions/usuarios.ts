@@ -3,16 +3,17 @@
 import { requireAdmin } from '@/lib/auth/guard'
 import { enviarConfirmacao, enviarRecuperacao } from '@/lib/email/mensagem'
 import { remetenteConfigurado } from '@/lib/email/smtp'
+import { ehDiretiva } from '@/lib/acessos/regras'
 import {
   atualizarConta,
   buscarUsuarioPublicoPorId,
   convidarConta,
   decidirPedidoOperacao,
   excluirConta,
+  listarGrupos,
   prepararRecuperacao,
   reenviarConvite,
   registrarEvento,
-  type Papel,
   type SituacaoConta,
 } from '@/lib/operacao/store'
 import { redirect, unstable_rethrow } from 'next/navigation'
@@ -104,19 +105,17 @@ export async function configurarUsuario(formData: FormData) {
   const primeiroNome = String(formData.get('primeiroNome') ?? '').trim()
   const sobrenome = String(formData.get('sobrenome') ?? '').trim()
   const celular = String(formData.get('celular') ?? '').trim()
-  const papel = String(formData.get('papel') ?? '') as Papel
   const situacao = String(formData.get('situacao') ?? '') as SituacaoConta
-  const noGrupoExecutor = String(formData.get('grupoExecutor') ?? '') === 'sim'
+  const gruposIds = formData.getAll('grupo').map((item) => String(item))
 
   if (primeiroNome.length < 2) voltar('O primeiro nome precisa de ao menos 2 caracteres.')
-  if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
   if (situacao !== 'ativa' && situacao !== 'bloqueada' && situacao !== 'desativada') {
     voltar('Situação inválida.')
   }
 
   const erro = await atualizarConta(
     id,
-    { primeiroNome, sobrenome, celular: celular || null, papel, situacao, noGrupoExecutor },
+    { primeiroNome, sobrenome, celular: celular || null, situacao, gruposIds },
     admin.login,
   )
 
@@ -130,18 +129,27 @@ export async function criarUsuario(formData: FormData) {
   const sobrenome = String(formData.get('sobrenome') ?? '').trim()
   const email = String(formData.get('email') ?? '').trim().toLowerCase()
   const celular = String(formData.get('celular') ?? '').trim()
-  const papel = String(formData.get('papel') ?? 'comum') as Papel
+  const loginInformado = String(formData.get('login') ?? '').trim().toLowerCase()
+  const grupoId = String(formData.get('grupoId') ?? '')
+  const noExecutor = String(formData.get('executor') ?? '') === 'sim'
+  const login = loginInformado || email
   if (primeiroNome.length < 2 || sobrenome.length < 2) voltar('Informe o primeiro nome e o sobrenome.')
   if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) voltar('Informe um e-mail válido.')
   if (celular.replace(/\D/g, '').length < 10) voltar('Informe o celular com DDD.')
-  if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
+  if (!/^[a-z0-9._@-]{1,120}$/.test(login)) voltar('O login só pode ter letras, números, ponto, _ e -.')
+  const grupos = await listarGrupos()
+  const grupo = grupos.find((item) => item.id === grupoId)
+  if (!grupo?.diretiva || !ehDiretiva(grupo.diretiva)) voltar('Escolha um grupo que já tenha diretiva.')
   if (!remetenteConfigurado()) {
     voltar('O remetente não está configurado. O convite não foi criado.')
   }
 
   const convite = { email: '', nome: '', token: '' }
   try {
-    const resultado = await convidarConta({ primeiroNome, sobrenome, email, celular, papel }, admin.login)
+    const resultado = await convidarConta(
+      { primeiroNome, sobrenome, email, celular, login, grupoId, noExecutor },
+      admin.login,
+    )
     if (resultado.erro) voltar(resultado.erro)
     convite.email = resultado.email
     convite.nome = resultado.nome

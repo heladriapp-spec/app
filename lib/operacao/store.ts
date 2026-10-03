@@ -1,4 +1,13 @@
 import {
+  GRUPO_ACESSO_COMUM,
+  GRUPO_ADMINISTRADORES,
+  GRUPO_EXECUTOR,
+  idDeNome,
+  papelDosGrupos,
+  type DiretivaGrupo,
+  type GrupoRegistro,
+} from '@/lib/acessos/regras'
+import {
   acharLink,
   criarLink,
   emitirLink,
@@ -30,6 +39,9 @@ import {
 } from '@/lib/supabase/nuvem'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+
+export type { DiretivaGrupo, GrupoRegistro } from '@/lib/acessos/regras'
+export { GRUPO_ACESSO_COMUM, GRUPO_ADMINISTRADORES, GRUPO_EXECUTOR } from '@/lib/acessos/regras'
 
 export type Papel = 'administrador' | 'comum'
 export type SituacaoConta = 'ativa' | 'bloqueada' | 'desativada'
@@ -83,6 +95,11 @@ export type PedidoAcesso = {
   decididoEm: string | null
   decididoPor: string | null
   papel: Papel
+  /** Grupo com diretiva em que a conta nasce. Pedido público fica no Acesso comum. */
+  grupoId: string | null
+  /** Login escolhido na gestão. No pedido público, o e-mail é o login. */
+  loginEscolhido: string | null
+  noExecutor: boolean
 }
 
 export type NivelLog = 'info' | 'alerta' | 'erro'
@@ -99,15 +116,14 @@ export type LogRegistro = {
 
 type Store = {
   usuarios: Usuario[]
-  /** Contas do grupo Executor. A lista é a do grupo, não uma marca na conta. */
+  /** Contas do grupo Executor. Espelha o grupo Executor. */
   membrosExecutor: string[]
+  grupos: GrupoRegistro[]
   pedidos: PedidoAcesso[]
   links: LinkAcesso[]
   estados: EntregaEstadoRow[]
   logs: LogRegistro[]
 }
-
-const GRUPO_EXECUTOR = 'executor'
 
 const ARQUIVO = path.join(process.cwd(), 'data', 'operacao.json')
 /** Teto temporário. A retenção definitiva fica para uma etapa posterior. */
@@ -156,6 +172,29 @@ async function semear(): Promise<Store> {
       },
     ],
     membrosExecutor: [],
+    grupos: [
+      {
+        id: GRUPO_ADMINISTRADORES,
+        nome: 'Administradores',
+        diretiva: 'administrador',
+        sistema: true,
+        membros: ['instalacao-adm'],
+      },
+      {
+        id: GRUPO_ACESSO_COMUM,
+        nome: 'Acesso comum',
+        diretiva: 'acesso_comum',
+        sistema: true,
+        membros: ['instalacao-convidado'],
+      },
+      {
+        id: GRUPO_EXECUTOR,
+        nome: 'Executor',
+        diretiva: null,
+        sistema: true,
+        membros: [],
+      },
+    ],
     pedidos: [],
     links: [],
     estados: [],
@@ -184,13 +223,85 @@ function completar(store: Store): Store {
   }
   const ids = new Set(store.usuarios.map((item) => item.id))
   store.membrosExecutor = [...new Set(store.membrosExecutor.filter((id) => ids.has(id)))]
+  garantirGrupos(store, ids)
   for (const pedido of store.pedidos) {
     const nomes = partirNome(pedido.nome)
     if (!pedido.primeiroNome) pedido.primeiroNome = nomes.primeiroNome
     if (pedido.sobrenome == null) pedido.sobrenome = nomes.sobrenome
     if (pedido.papel !== 'administrador' && pedido.papel !== 'comum') pedido.papel = 'comum'
+    if (pedido.grupoId === undefined) pedido.grupoId = null
+    if (pedido.loginEscolhido === undefined) pedido.loginEscolhido = null
+    if (typeof pedido.noExecutor !== 'boolean') pedido.noExecutor = false
   }
   return store
+}
+
+function grupoSistema(
+  id: string,
+  nome: string,
+  diretiva: DiretivaGrupo | null,
+): GrupoRegistro {
+  return { id, nome, diretiva, sistema: true, membros: [] }
+}
+
+function garantirGrupos(store: Store, ids: Set<string>) {
+  if (!Array.isArray(store.grupos)) store.grupos = []
+  const vazio = store.grupos.length === 0
+  const garantir = (id: string, nome: string, diretiva: DiretivaGrupo | null) => {
+    let grupo = store.grupos.find((item) => item.id === id)
+    if (!grupo) {
+      grupo = grupoSistema(id, nome, diretiva)
+      store.grupos.push(grupo)
+    }
+    grupo.nome = nome
+    grupo.diretiva = diretiva
+    grupo.sistema = true
+    grupo.membros = [...new Set(grupo.membros.filter((membro) => ids.has(membro)))]
+    return grupo
+  }
+  const administradores = garantir(GRUPO_ADMINISTRADORES, 'Administradores', 'administrador')
+  const acessoComum = garantir(GRUPO_ACESSO_COMUM, 'Acesso comum', 'acesso_comum')
+  const executor = garantir(GRUPO_EXECUTOR, 'Executor', null)
+  if (vazio) {
+    for (const usuario of store.usuarios) {
+      if (usuario.papel === 'administrador') administradores.membros.push(usuario.id)
+      else acessoComum.membros.push(usuario.id)
+    }
+    executor.membros = [...store.membrosExecutor]
+  }
+  for (const grupo of store.grupos) {
+    if (grupo.sistema) continue
+    grupo.membros = [...new Set(grupo.membros.filter((membro) => ids.has(membro)))]
+    if (!grupo.diretiva) grupo.diretiva = 'acesso_comum'
+  }
+  store.membrosExecutor = [...executor.membros]
+  for (const usuario of store.usuarios) {
+    usuario.papel = papelDosGrupos(store.grupos, usuario.id)
+  }
+}
+
+function definirGruposDoUsuario(store: Store, id: string, gruposIds: readonly string[]) {
+  const escolhidos = new Set(gruposIds)
+  for (const grupo of store.grupos) {
+    const tem = grupo.membros.includes(id)
+    const quer = escolhidos.has(grupo.id)
+    if (quer && !tem) grupo.membros.push(id)
+    if (!quer && tem) grupo.membros = grupo.membros.filter((membro) => membro !== id)
+  }
+  const executor = store.grupos.find((grupo) => grupo.id === GRUPO_EXECUTOR)
+  store.membrosExecutor = executor ? [...executor.membros] : []
+  const usuario = store.usuarios.find((item) => item.id === id)
+  if (usuario) usuario.papel = papelDosGrupos(store.grupos, usuario.id)
+}
+
+function copiaGrupos(store: Store): GrupoRegistro[] {
+  return store.grupos.map((grupo) => ({ ...grupo, membros: [...grupo.membros] }))
+}
+
+function restaurarGrupos(store: Store, grupos: GrupoRegistro[]) {
+  store.grupos = grupos
+  const executor = store.grupos.find((grupo) => grupo.id === GRUPO_EXECUTOR)
+  store.membrosExecutor = executor ? [...executor.membros] : []
 }
 
 async function lerDisco(): Promise<Store | null> {
@@ -579,6 +690,9 @@ function pedidoDe(item: PedidoRow): PedidoAcesso {
     decididoEm: item.decidido_em,
     decididoPor: item.decidido_por,
     papel: item.papel === 'administrador' ? 'administrador' : 'comum',
+    grupoId: item.grupo_id ?? null,
+    loginEscolhido: item.login_escolhido ?? null,
+    noExecutor: item.no_executor === true,
   }
 }
 
@@ -693,8 +807,11 @@ const COLUNAS_PEDIDO = [
   'decidido_em',
   'decidido_por',
   'papel',
+  'grupo_id',
+  'login_escolhido',
+  'no_executor',
 ]
-const OPCIONAIS_PEDIDO = ['primeiro_nome', 'sobrenome', 'papel']
+const OPCIONAIS_PEDIDO = ['primeiro_nome', 'sobrenome', 'papel', 'grupo_id', 'login_escolhido', 'no_executor']
 
 type PedidoRow = {
   id: string
@@ -708,6 +825,9 @@ type PedidoRow = {
   decidido_em: string | null
   decidido_por: string | null
   papel?: Papel | null
+  grupo_id?: string | null
+  login_escolhido?: string | null
+  no_executor?: boolean | null
 }
 
 type LinkRow = {
@@ -755,6 +875,7 @@ async function lerNuvem(): Promise<Store> {
     membrosExecutor: membros
       ? [...membros]
       : usuarios.filter((item) => item.executor === true).map((item) => item.id),
+    grupos: [],
     pedidos: pedidos.map(pedidoDe),
     links,
     estados,
@@ -1169,9 +1290,8 @@ export async function atualizarConta(
     primeiroNome: string
     sobrenome: string
     celular: string | null
-    papel: Papel
     situacao: SituacaoConta
-    noGrupoExecutor: boolean
+    gruposIds: string[]
   },
   ator: string,
 ) {
@@ -1185,7 +1305,7 @@ export async function atualizarConta(
     evento: 'USER_UPDATED',
     ator,
     mensagem: `${ator} alterou ${resultado.login}.`,
-    detalhe: { papel: entrada.papel, situacao: entrada.situacao, grupoExecutor: entrada.noGrupoExecutor },
+    detalhe: { situacao: entrada.situacao, papel: resultado.papel },
   })
   return null
 }
@@ -1197,34 +1317,61 @@ function atualizarContaLocal(
     primeiroNome: string
     sobrenome: string
     celular: string | null
-    papel: Papel
     situacao: SituacaoConta
-    noGrupoExecutor: boolean
+    gruposIds: string[]
   },
 ) {
   const usuario = store.usuarios.find((item) => item.id === id)
-  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
-  const ids = store.usuarios.filter((item) => item.papel === 'administrador' && item.situacao === 'ativa').map((item) => item.id)
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '', papel: 'comum' as Papel }
+  const conhecidos = new Set(store.grupos.map((grupo) => grupo.id))
+  if (entrada.gruposIds.some((grupoId) => !conhecidos.has(grupoId))) {
+    return { erro: 'Grupo não encontrado.', login: '', papel: 'comum' as Papel }
+  }
+  const comDiretiva = store.grupos.filter(
+    (grupo) => entrada.gruposIds.includes(grupo.id) && grupo.diretiva,
+  )
+  if (comDiretiva.length === 0) {
+    return { erro: 'A conta precisa de um grupo com diretiva.', login: '', papel: 'comum' as Papel }
+  }
+  const gruposAntes = copiaGrupos(store)
+  const papelAntes = usuario.papel
+  const situacaoAntes = usuario.situacao
+  definirGruposDoUsuario(store, id, entrada.gruposIds)
   const ativa = entrada.situacao === 'ativa'
-  if (!sobraAdministrador(ids, id, entrada.papel, ativa)) {
-    return { erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.', login: '' }
+  usuario.situacao = entrada.situacao
+  usuario.ativo = ativa
+  const sobra = store.usuarios.some((item) => item.papel === 'administrador' && item.situacao === 'ativa')
+  if (!sobra) {
+    restaurarGrupos(store, gruposAntes)
+    usuario.papel = papelAntes
+    usuario.situacao = situacaoAntes
+    usuario.ativo = situacaoAntes === 'ativa'
+    return {
+      erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.',
+      login: '',
+      papel: 'comum' as Papel,
+    }
   }
   usuario.primeiroNome = entrada.primeiroNome
   usuario.sobrenome = entrada.sobrenome
   usuario.nome = nomeCompleto(entrada.primeiroNome, entrada.sobrenome)
   usuario.celular = entrada.celular
-  usuario.papel = entrada.papel
-  usuario.situacao = entrada.situacao
-  usuario.ativo = ativa
-  definirMembroLocal(store, id, entrada.noGrupoExecutor)
   if (!ativa) usuario.sessaoGeracao += 1
-  return { erro: null, login: usuario.login }
+  return { erro: null, login: usuario.login, papel: usuario.papel }
 }
 
 function definirMembroLocal(store: Store, id: string, incluir: boolean) {
-  const tem = store.membrosExecutor.includes(id)
-  if (incluir && !tem) store.membrosExecutor.push(id)
-  if (!incluir && tem) store.membrosExecutor = store.membrosExecutor.filter((item) => item !== id)
+  const executor = store.grupos.find((grupo) => grupo.id === GRUPO_EXECUTOR)
+  if (!executor) {
+    const tem = store.membrosExecutor.includes(id)
+    if (incluir && !tem) store.membrosExecutor.push(id)
+    if (!incluir && tem) store.membrosExecutor = store.membrosExecutor.filter((item) => item !== id)
+    return
+  }
+  const tem = executor.membros.includes(id)
+  if (incluir && !tem) executor.membros.push(id)
+  if (!incluir && tem) executor.membros = executor.membros.filter((item) => item !== id)
+  store.membrosExecutor = [...executor.membros]
 }
 
 async function atualizarContaNuvem(
@@ -1233,31 +1380,47 @@ async function atualizarContaNuvem(
     primeiroNome: string
     sobrenome: string
     celular: string | null
-    papel: Papel
     situacao: SituacaoConta
-    noGrupoExecutor: boolean
+    gruposIds: string[]
   },
 ) {
   const usuario = await buscarUsuarioPublicoPorId(id)
-  if (!usuario) return { erro: 'Usuário não encontrado.', login: '' }
+  if (!usuario) return { erro: 'Usuário não encontrado.', login: '', papel: 'comum' as Papel }
+  const grupos = await listarGrupos()
+  const conhecidos = new Set(grupos.map((grupo) => grupo.id))
+  if (entrada.gruposIds.some((grupoId) => !conhecidos.has(grupoId))) {
+    return { erro: 'Grupo não encontrado.', login: '', papel: 'comum' as Papel }
+  }
+  const escolhidos = grupos.filter((grupo) => entrada.gruposIds.includes(grupo.id))
+  if (!escolhidos.some((grupo) => grupo.diretiva)) {
+    return { erro: 'A conta precisa de um grupo com diretiva.', login: '', papel: 'comum' as Papel }
+  }
+  const papel: Papel = escolhidos.some((grupo) => grupo.diretiva === 'administrador')
+    ? 'administrador'
+    : 'comum'
   const ids = await idsAdministradoresAtivos()
   const ativa = entrada.situacao === 'ativa'
-  if (!sobraAdministrador(ids, id, entrada.papel, ativa)) {
-    return { erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.', login: '' }
+  if (!sobraAdministrador(ids, id, papel, ativa)) {
+    return {
+      erro: 'O único administrador ativo não pode ser bloqueado, desativado nem rebaixado.',
+      login: '',
+      papel: 'comum' as Papel,
+    }
   }
   const corpo: Record<string, unknown> = {
     nome: nomeCompleto(entrada.primeiroNome, entrada.sobrenome),
     primeiro_nome: entrada.primeiroNome,
     sobrenome: entrada.sobrenome,
     celular: entrada.celular,
-    papel: entrada.papel,
+    papel,
     ativo: ativa,
     situacao: entrada.situacao,
   }
   if (!ativa) corpo.sessao_geracao = usuario.sessaoGeracao + 1
   await gravarConta(id, corpo)
-  await definirMembroExecutorNuvem(id, entrada.noGrupoExecutor)
-  return { erro: null, login: usuario.login }
+  const erroGrupo = await gravarMembrosNuvem(id, entrada.gruposIds)
+  if (erroGrupo) return { erro: erroGrupo, login: '', papel: 'comum' as Papel }
+  return { erro: null, login: usuario.login, papel }
 }
 
 async function definirMembroExecutorNuvem(id: string, incluir: boolean) {
@@ -1361,7 +1524,10 @@ function excluirContaLocal(store: Store, id: string) {
     return { erro: 'O único administrador ativo não pode ser excluído.', login: '' }
   }
   store.usuarios = store.usuarios.filter((item) => item.id !== id)
-  definirMembroLocal(store, id, false)
+  for (const grupo of store.grupos) {
+    grupo.membros = grupo.membros.filter((membro) => membro !== id)
+  }
+  store.membrosExecutor = store.grupos.find((grupo) => grupo.id === GRUPO_EXECUTOR)?.membros.slice() ?? []
   return { erro: null, login: usuario.login }
 }
 
@@ -1419,6 +1585,9 @@ function registrarPedidoLocal(
     decididoEm: null,
     decididoPor: null,
     papel: 'comum',
+    grupoId: GRUPO_ACESSO_COMUM,
+    loginEscolhido: null,
+    noExecutor: false,
   })
   return null
 }
@@ -1676,22 +1845,25 @@ async function confirmarContaLocal(entrada: { token: string; senha: string }) {
     if (!pedido || pedido.situacao !== 'aprovado') {
       return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
     }
-    const login = link.email.trim().toLowerCase()
-    if (store.usuarios.some((item) => item.login === login || item.email === login)) {
+    const login = (pedido.loginEscolhido || link.email).trim().toLowerCase()
+    if (store.usuarios.some((item) => item.login === login || item.email === link.email)) {
       return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '', papel: 'comum' as const }
     }
     const usuarioId = crypto.randomUUID()
-    const papel = pedido.papel === 'administrador' ? 'administrador' : 'comum'
+    const pedidoGrupo = pedido.grupoId || GRUPO_ACESSO_COMUM
+    const grupoId = store.grupos.some((grupo) => grupo.id === pedidoGrupo && grupo.diretiva)
+      ? pedidoGrupo
+      : GRUPO_ACESSO_COMUM
     store.usuarios.push({
       id: usuarioId,
       nome: nomeCompleto(pedido.primeiroNome, pedido.sobrenome) || pedido.nome,
       primeiroNome: pedido.primeiroNome,
       sobrenome: pedido.sobrenome,
-      email: login,
+      email: link.email,
       celular: pedido.celular,
       login,
       senhaHash,
-      papel,
+      papel: 'comum',
       ativo: true,
       situacao: 'ativa',
       ultimoAcessoEm: null,
@@ -1699,8 +1871,12 @@ async function confirmarContaLocal(entrada: { token: string; senha: string }) {
       origem: 'pedido',
       ocultarBoasVindas: false,
     })
+    const gruposIds = [grupoId]
+    if (pedido.noExecutor) gruposIds.push(GRUPO_EXECUTOR)
+    definirGruposDoUsuario(store, usuarioId, gruposIds)
+    const criado = store.usuarios.find((item) => item.id === usuarioId)
     link.usadoEm = new Date().toISOString()
-    return { erro: null, usuarioId, login, email: login, papel }
+    return { erro: null, usuarioId, login, email: link.email, papel: criado?.papel ?? 'comum' }
   })
 }
 
@@ -1713,8 +1889,8 @@ async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
   if (!pedido || pedido.situacao !== 'aprovado') {
     return { erro: 'Este pedido não está aprovado.', usuarioId: '', login: '', email: '', papel: 'comum' as const }
   }
-  const login = link.email.trim().toLowerCase()
-  if ((await existeLogin(login)) || (await existeEmailExato(login))) {
+  const login = (pedido.loginEscolhido || link.email).trim().toLowerCase()
+  if ((await existeLogin(login)) || (await existeEmailExato(link.email)) || (await existeLogin(link.email))) {
     return { erro: EMAIL_TEM_CONTA, usuarioId: '', login: '', email: '', papel: 'comum' as const }
   }
   const usuarioId = crypto.randomUUID()
@@ -1726,7 +1902,7 @@ async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
       nome: nomeCompleto(pedido.primeiroNome, pedido.sobrenome) || pedido.nome,
       primeiro_nome: pedido.primeiroNome,
       sobrenome: pedido.sobrenome,
-      email: login,
+      email: link.email,
       celular: pedido.celular,
       login,
       senha_hash: senhaHash,
@@ -1749,12 +1925,20 @@ async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
       papel: 'comum' as const,
     }
   }
+  const grupoId = pedido.grupoId || (papel === 'administrador' ? GRUPO_ADMINISTRADORES : GRUPO_ACESSO_COMUM)
+  const gruposIds = [grupoId]
+  if (pedido.noExecutor) gruposIds.push(GRUPO_EXECUTOR)
+  try {
+    await gravarMembrosNuvem(usuarioId, gruposIds)
+  } catch (erro) {
+    console.error(`[auditoria] falha ao incluir a conta no grupo: ${textoDiagnostico(erro)}`)
+  }
   try {
     await marcarLinkNaNuvem(link.id)
   } catch (erro) {
     console.error(`[auditoria] falha ao marcar link de confirmação: ${textoDiagnostico(erro)}`)
   }
-  return { erro: null, usuarioId, login, email: login, papel }
+  return { erro: null, usuarioId, login, email: link.email, papel }
 }
 
 export async function trocarSenhaPeloLink(token: string, senha: string) {
@@ -1834,7 +2018,15 @@ export async function marcarUltimoAcesso(id: string) {
 }
 
 export async function convidarConta(
-  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    email: string
+    celular: string
+    login: string
+    grupoId: string
+    noExecutor: boolean
+  },
   ator: string,
 ) {
   const nome = nomeCompleto(entrada.primeiroNome, entrada.sobrenome)
@@ -1847,18 +2039,32 @@ export async function convidarConta(
     evento: 'USER_APPROVED',
     ator,
     mensagem: `${ator} convidou ${entrada.email}.`,
-    detalhe: { email: entrada.email, papel: entrada.papel },
+    detalhe: { email: entrada.email, login: entrada.login, grupo: entrada.grupoId },
   })
   return resultado
 }
 
 function convidarLocal(
   store: Store,
-  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    email: string
+    celular: string
+    login: string
+    grupoId: string
+    noExecutor: boolean
+  },
   nome: string,
   ator: string,
 ) {
-  if (store.usuarios.some((item) => item.email === entrada.email || item.login === entrada.email)) {
+  const grupo = store.grupos.find((item) => item.id === entrada.grupoId && item.diretiva)
+  if (!grupo) return { erro: 'Escolha um grupo que já tenha diretiva.', email: '', nome: '', token: '' }
+  if (
+    store.usuarios.some(
+      (item) => item.email === entrada.email || item.login === entrada.email || item.login === entrada.login,
+    )
+  ) {
     return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
   }
   if (store.pedidos.some((item) => item.email === entrada.email && item.situacao === 'pendente')) {
@@ -1876,7 +2082,10 @@ function convidarLocal(
     situacao: 'aprovado',
     decididoEm: new Date().toISOString(),
     decididoPor: ator,
-    papel: entrada.papel,
+    papel: grupo.diretiva === 'administrador' ? 'administrador' : 'comum',
+    grupoId: grupo.id,
+    loginEscolhido: entrada.login,
+    noExecutor: entrada.noExecutor,
   })
   const token = emitirLink(store.links, {
     tipo: 'confirmacao',
@@ -1888,11 +2097,26 @@ function convidarLocal(
 }
 
 async function convidarNuvem(
-  entrada: { primeiroNome: string; sobrenome: string; email: string; celular: string; papel: Papel },
+  entrada: {
+    primeiroNome: string
+    sobrenome: string
+    email: string
+    celular: string
+    login: string
+    grupoId: string
+    noExecutor: boolean
+  },
   nome: string,
   ator: string,
 ) {
-  if ((await existeEmailExato(entrada.email)) || (await existeLogin(entrada.email))) {
+  const grupos = await listarGrupos()
+  const grupo = grupos.find((item) => item.id === entrada.grupoId && item.diretiva)
+  if (!grupo) return { erro: 'Escolha um grupo que já tenha diretiva.', email: '', nome: '', token: '' }
+  if (
+    (await existeEmailExato(entrada.email)) ||
+    (await existeLogin(entrada.email)) ||
+    (await existeLogin(entrada.login))
+  ) {
     return { erro: EMAIL_TEM_CONTA, email: '', nome: '', token: '' }
   }
   if (await existePedidoPendente(entrada.email)) return { erro: EMAIL_EM_USO, email: '', nome: '', token: '' }
@@ -1908,7 +2132,10 @@ async function convidarNuvem(
       situacao: 'aprovado',
       decidido_em: new Date().toISOString(),
       decidido_por: ator,
-      papel: entrada.papel,
+      papel: grupo.diretiva === 'administrador' ? 'administrador' : 'comum',
+      grupo_id: grupo.id,
+      login_escolhido: entrada.login,
+      no_executor: entrada.noExecutor,
     })
   } catch (erro) {
     return { erro: traduzirUnico(erro, { pedidos_acesso_email_pendente: EMAIL_EM_USO }), email: '', nome: '', token: '' }
@@ -1947,4 +2174,212 @@ export async function salvarEstadoEntrega(linha: EntregaEstadoRow) {
     if (atual) Object.assign(atual, linha)
     else store.estados.push({ ...linha })
   })
+}
+
+function gruposSinteticos(usuarios: UsuarioPublico[]): GrupoRegistro[] {
+  return [
+    {
+      id: GRUPO_ADMINISTRADORES,
+      nome: 'Administradores',
+      diretiva: 'administrador',
+      sistema: true,
+      membros: usuarios.filter((item) => item.papel === 'administrador').map((item) => item.id),
+    },
+    {
+      id: GRUPO_ACESSO_COMUM,
+      nome: 'Acesso comum',
+      diretiva: 'acesso_comum',
+      sistema: true,
+      membros: usuarios.filter((item) => item.papel !== 'administrador').map((item) => item.id),
+    },
+    {
+      id: GRUPO_EXECUTOR,
+      nome: 'Executor',
+      diretiva: null,
+      sistema: true,
+      membros: usuarios.filter((item) => item.noGrupoExecutor).map((item) => item.id),
+    },
+  ]
+}
+
+export async function listarGrupos(): Promise<GrupoRegistro[]> {
+  if (!supabaseConfigurado()) {
+    const store = await lerOperacaoLocal()
+    return store.grupos.map((grupo) => ({ ...grupo, membros: [...grupo.membros] }))
+  }
+  try {
+    const linhas = await lerTabela<{
+      id: string
+      nome: string
+      diretiva: DiretivaGrupo | null
+      sistema: boolean
+    }>('grupos', 'select=id,nome,diretiva,sistema&order=nome.asc')
+    const membros = await lerTabela<{ grupo: string; usuario_id: string }>('grupo_membros', 'select=grupo,usuario_id')
+    return linhas.map((grupo) => ({
+      id: grupo.id,
+      nome: grupo.nome,
+      diretiva: grupo.diretiva,
+      sistema: grupo.sistema,
+      membros: membros.filter((item) => item.grupo === grupo.id).map((item) => item.usuario_id),
+    }))
+  } catch (erro) {
+    if (!ehTabelaAusente(erro)) throw erro
+    return gruposSinteticos(await listarUsuariosPublicos())
+  }
+}
+
+async function gravarMembrosNuvem(id: string, gruposIds: string[]) {
+  try {
+    await apagarOnde('grupo_membros', `${filtro('usuario_id', 'eq', id)}`)
+    if (gruposIds.length > 0) {
+      await gravarTabela(
+        'grupo_membros',
+        gruposIds.map((grupo) => ({ grupo, usuario_id: id })),
+      )
+    }
+    return null
+  } catch (erro) {
+    if (!ehTabelaAusente(erro)) throw erro
+    const estranho = gruposIds.find(
+      (grupo) => grupo !== GRUPO_ADMINISTRADORES && grupo !== GRUPO_ACESSO_COMUM && grupo !== GRUPO_EXECUTOR,
+    )
+    if (estranho) return 'Criar grupo novo precisa da migração no banco.'
+    await definirMembroExecutorNuvem(id, gruposIds.includes(GRUPO_EXECUTOR))
+    return null
+  }
+}
+
+export async function criarGrupoAcesso(nome: string, diretiva: DiretivaGrupo, ator: string) {
+  const limpo = nome.trim()
+  if (limpo.length < 2) return 'O nome do grupo precisa de ao menos 2 caracteres.'
+  if (!supabaseConfigurado()) {
+    const erro = await alterarLocal((store) => {
+      if (store.grupos.some((grupo) => grupo.nome.toLowerCase() === limpo.toLowerCase())) {
+        return 'Já existe um grupo com esse nome.'
+      }
+      store.grupos.push({
+        id: idDeNome(limpo, new Set(store.grupos.map((grupo) => grupo.id))),
+        nome: limpo,
+        diretiva,
+        sistema: false,
+        membros: [],
+      })
+      return null
+    })
+    if (erro) return erro
+  } else {
+    try {
+      const id = idDeNome(limpo, new Set((await listarGrupos()).map((grupo) => grupo.id)))
+      await inserirLinha('grupos', { id, nome: limpo, diretiva, sistema: false }, 'id')
+    } catch (erro) {
+      if (ehTabelaAusente(erro)) return 'Criar grupo novo precisa da migração no banco.'
+      throw erro
+    }
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'GROUP_CREATED',
+    ator,
+    mensagem: `${ator} criou o grupo ${limpo}.`,
+    detalhe: { grupo: limpo, diretiva },
+  })
+  return null
+}
+
+export async function excluirGrupoAcesso(id: string, ator: string) {
+  if (!idSeguro(id)) return 'Grupo não encontrado.'
+  if (!supabaseConfigurado()) {
+    const erro = await alterarLocal((store) => {
+      const grupo = store.grupos.find((item) => item.id === id)
+      if (!grupo) return 'Grupo não encontrado.'
+      if (grupo.sistema) return 'Este grupo faz parte da aplicação e não se apaga.'
+      if (grupo.membros.length > 0) return 'Grupo com membro não se apaga.'
+      const outrosAdmin = store.grupos.filter(
+        (item) => item.id !== id && item.diretiva === 'administrador',
+      )
+      if (grupo.diretiva === 'administrador' && outrosAdmin.length === 0) {
+        return 'O último grupo de administrador não se apaga.'
+      }
+      store.grupos = store.grupos.filter((item) => item.id !== id)
+      return null
+    })
+    if (erro) return erro
+  } else {
+    const grupos = await listarGrupos()
+    const grupo = grupos.find((item) => item.id === id)
+    if (!grupo) return 'Grupo não encontrado.'
+    if (grupo.sistema) return 'Este grupo faz parte da aplicação e não se apaga.'
+    if (grupo.membros.length > 0) return 'Grupo com membro não se apaga.'
+    try {
+      await apagarOnde('grupos', `${filtro('id', 'eq', id)}&select=id`)
+    } catch (erro) {
+      if (ehTabelaAusente(erro)) return 'Criar grupo novo precisa da migração no banco.'
+      throw erro
+    }
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'GROUP_DELETED',
+    ator,
+    mensagem: `${ator} excluiu um grupo.`,
+    detalhe: { grupo: id },
+  })
+  return null
+}
+
+export async function alternarMembroGrupo(grupoId: string, usuarioId: string, incluir: boolean, ator: string) {
+  if (!idSeguro(grupoId) || !idSeguro(usuarioId)) return 'Não foi possível alterar o grupo.'
+  if (!supabaseConfigurado()) {
+    const erro = await alterarLocal((store) => {
+      const grupo = store.grupos.find((item) => item.id === grupoId)
+      const usuario = store.usuarios.find((item) => item.id === usuarioId)
+      if (!grupo || !usuario) return 'Não foi possível alterar o grupo.'
+      const gruposIds = store.grupos.filter((item) => item.membros.includes(usuarioId)).map((item) => item.id)
+      const proximos = incluir
+        ? [...new Set([...gruposIds, grupoId])]
+        : gruposIds.filter((item) => item !== grupoId)
+      const comDiretiva = store.grupos.some((item) => proximos.includes(item.id) && item.diretiva)
+      if (!comDiretiva) return 'A conta precisa de um grupo com diretiva.'
+      const antes = copiaGrupos(store)
+      const papelAntes = usuario.papel
+      definirGruposDoUsuario(store, usuarioId, proximos)
+      const sobra = store.usuarios.some((item) => item.papel === 'administrador' && item.situacao === 'ativa')
+      if (!sobra) {
+        restaurarGrupos(store, antes)
+        usuario.papel = papelAntes
+        return 'O único administrador ativo não pode sair do último grupo de administrador.'
+      }
+      return null
+    })
+    if (erro) return erro
+  } else {
+    const grupos = await listarGrupos()
+    const usuarios = await listarUsuariosPublicos()
+    const usuario = usuarios.find((item) => item.id === usuarioId)
+    const grupo = grupos.find((item) => item.id === grupoId)
+    if (!usuario || !grupo) return 'Não foi possível alterar o grupo.'
+    const atuais = grupos.filter((item) => item.membros.includes(usuarioId)).map((item) => item.id)
+    const proximos = incluir ? [...new Set([...atuais, grupoId])] : atuais.filter((item) => item !== grupoId)
+    const papel: Papel = grupos.some((item) => proximos.includes(item.id) && item.diretiva === 'administrador')
+      ? 'administrador'
+      : 'comum'
+    if (!grupos.some((item) => proximos.includes(item.id) && item.diretiva)) {
+      return 'A conta precisa de um grupo com diretiva.'
+    }
+    const ids = await idsAdministradoresAtivos()
+    if (!sobraAdministrador(ids, usuarioId, papel, usuario.situacao === 'ativa')) {
+      return 'O único administrador ativo não pode sair do último grupo de administrador.'
+    }
+    await gravarConta(usuarioId, { papel })
+    const erro = await gravarMembrosNuvem(usuarioId, proximos)
+    if (erro) return erro
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: incluir ? 'GROUP_MEMBER_ADDED' : 'GROUP_MEMBER_REMOVED',
+    ator,
+    mensagem: incluir ? `${ator} incluiu uma conta no grupo.` : `${ator} tirou uma conta do grupo.`,
+    detalhe: { grupo: grupoId, usuario: usuarioId },
+  })
+  return null
 }
