@@ -4,7 +4,7 @@ export type AtorProjeto = {
   id: string
   login: string
   papel: string
-  executor: boolean
+  noGrupoExecutor: boolean
 }
 
 export type AlvoProjeto = {
@@ -43,8 +43,8 @@ function ehResponsavel(usuario: { id: string }, projeto: { responsavelId: string
   return projeto.responsavelId != null && projeto.responsavelId === usuario.id
 }
 
-function naFila(usuario: { executor: boolean }, projeto: AlvoProjeto) {
-  return usuario.executor && projeto.status === 'em_execucao' && !projeto.responsavelId
+function naFila(usuario: { noGrupoExecutor: boolean }, projeto: AlvoProjeto) {
+  return usuario.noGrupoExecutor && projeto.status === 'em_execucao' && !projeto.responsavelId
 }
 
 /** A regra fica aqui. Esconder o botão não autoriza a rota. */

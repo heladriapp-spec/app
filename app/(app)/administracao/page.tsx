@@ -202,7 +202,7 @@ export default async function AdministracaoPage({
                     <td className="px-3 py-2">
                       <span className="flex flex-wrap items-center gap-2">
                         {usuario.papel === 'administrador' ? 'Administrador' : 'Usuário comum'}
-                        {usuario.executor ? <Badge>Executor</Badge> : null}
+                        {usuario.noGrupoExecutor ? <Badge>Executor</Badge> : null}
                       </span>
                     </td>
                     <td className="px-3 py-2">
@@ -265,18 +265,18 @@ export default async function AdministracaoPage({
                             <option value="desativada">Desativada</option>
                           </select>
                           {unico ? <input type="hidden" name="situacao" value="ativa" /> : null}
-                          <label className="flex items-center gap-2 text-sm" htmlFor={`executor-${usuario.id}`}>
+                          <label className="flex items-center gap-2 text-sm" htmlFor={`grupo-${usuario.id}`}>
                             <input
-                              id={`executor-${usuario.id}`}
+                              id={`grupo-${usuario.id}`}
                               type="checkbox"
-                              name="executor"
+                              name="grupoExecutor"
                               value="sim"
-                              defaultChecked={usuario.executor}
+                              defaultChecked={usuario.noGrupoExecutor}
                             />
-                            Executor
+                            Grupo Executor
                           </label>
                           <p className="text-xs text-muted-foreground">
-                            Vê a fila e pode assumir um projeto em execução.
+                            Inclui a conta no grupo Executor. O grupo é da aplicação. Quem está nele vê a fila e pode assumir. Não escolhe o responsável de um projeto.
                           </p>
                           <Button type="submit" size="sm">
                             Gravar

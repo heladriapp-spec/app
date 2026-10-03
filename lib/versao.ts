@@ -1,6 +1,6 @@
 /** Versão estável visível na UI. Manter igual ao package.json. */
-export const VERSAO_APP = '1.2'
-export const VERSAO_SEMVER = '1.2.0'
+export const VERSAO_APP = '1.3'
+export const VERSAO_SEMVER = '1.3.0'
 /** Versão que a publicação na Vercel está servindo. */
 export const VERSAO_PRODUCAO = '0.6.0'
 

@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A 1.1.0 deixa quem tem a marca de executor ver a fila, assumir, editar e concluir. O autor baixa o arquivo final só depois de concluído. A 1.2.0 libera ou recolhe a prévia: o autor lê os valores e não baixa. Devolver volta para preparação, pede o motivo e tira o responsável. O histórico lista quem enviou, assumiu, devolveu e concluiu, sem cópia do formulário. A próxima da fila é o grupo Executor: um grupo fixo da aplicação, no lugar da marca na conta. Quem está nele vê a fila e assume. O responsável do projeto continua sendo quem assumiu. O segundo trabalho do SESC fica em seguida, antes de generalizar o leitor. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A 1.1.0 deixa quem tem a marca de executor ver a fila, assumir, editar e concluir. O autor baixa o arquivo final só depois de concluído. A 1.2.0 libera ou recolhe a prévia: o autor lê os valores e não baixa. Devolver volta para preparação, pede o motivo e tira o responsável. O histórico lista quem enviou, assumiu, devolveu e concluiu, sem cópia do formulário. A 1.3.0 troca a marca na conta pelo grupo Executor, da aplicação. Quem está no grupo vê a fila e assume. O responsável do projeto continua sendo quem assumiu. A próxima da fila é um segundo trabalho do SESC, antes de generalizar o leitor. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -120,7 +120,7 @@ Visível só para o administrador:
 - Ver quem foi aprovado e ainda não fez o primeiro acesso. Reenviar a notificação de confirmação. O reenvio manda outro link e invalida o anterior. Sem o remetente configurado, o reenvio registra a tentativa e avisa que nada saiu: a mensagem não ficou retida em serviço nenhum.
 - Excluir usuário. Ele deixa de entrar. O histórico do que ele fez permanece. Quem está na própria conta não se exclui. O único administrador ativo não é excluído nem desativado.
 - Desativar usuário. Desativado não entra. Não apagar histórico do que ele fez. O `adm` da instalação não é desativado enquanto for o único administrador.
-- Marcar ou desmarcar a conta como executor. A marca nasce desligada e não é um papel. Quem tem a marca vê a fila de execução e pode assumir um projeto. A marca não amarra a conta a um projeto. Ela é o recorte atual do grupo Executor, da seção 6.12.
+- Incluir ou tirar a conta do grupo Executor. O grupo é fixo, da aplicação, e não é um papel. Conta nova nasce fora. Quem está no grupo vê a fila de execução e pode assumir um projeto. Não escolhe o responsável daquele projeto.
 
 Login é único. E-mail, quando existe, é único. E-mail que já pertence a uma conta, ou a um pedido ainda pendente, não abre outro pedido. As contas `adm` e `convidado` não têm e-mail e não entram nessa fila.
 
@@ -267,11 +267,9 @@ O grupo não escolhe quem preenche um projeto. Quem assume continua sendo o resp
 
 Participante continua sendo do projeto: define quem abre aquele trabalho. Papel continua sendo administrador ou usuário comum. O grupo não é um terceiro papel e não se cria por projeto.
 
-Esta entrega substitui a marca da seção 6.2. A caixa de executor sai. Incluir a conta no grupo passa a ser o único lugar dessa capacidade. Conta que já estiver marcada entra no grupo na mesma mudança. O comportamento da fila, de assumir, da prévia, da devolução, do histórico e do download permanece o da 1.1.0 e da 1.2.0.
+Na 1.3.0 a caixa da marca saiu. Incluir a conta no grupo é o único lugar dessa capacidade. Conta que já estava marcada entrou no grupo na mesma mudança. O comportamento da fila, de assumir, da prévia, da devolução, do histórico e do download permanece o da 1.1.0 e da 1.2.0.
 
 Não entra nesta entrega: criar, renomear ou apagar grupo; mais de um grupo; grupo por projeto; o grupo inteiro com permissão de editar o mesmo formulário.
-
-Priorizar agora põe este passo na frente do segundo arquivo do SESC. Esse arquivo não depende do grupo. A espera é de um passo, e o fluxo já implantado não muda de regra. Deixar a marca para depois abre espaço para outra capacidade virar outra caixa na conta.
 
 ## 7. Fidelidade do arquivo
 
@@ -320,7 +318,7 @@ Campo de preço vazio no original está gravado como zero. Na tela, zero ainda n
 - A senha não trafega de volta por e-mail. Confirmação de conta e recuperação de senha usam link de uso único, com prazo para expirar. Recuperação exige e-mail na conta.
 - As contas da instalação existem desde o primeiro acesso, sem e-mail, sem pedido e sem confirmação: `adm` / `Administrador@001` entra no portal administrativo; `convidado` / `convidado@1` entra só para emissão de lançamento.
 - Duas pessoas podem gravar no mesmo projeto. A gravação de um campo não apaga a gravação de outro campo feita por outra pessoa. Se as duas alterarem o mesmo campo, vale a gravação mais recente, e as duas aparecem no histórico, em ordem.
-- A capacidade de executar pertence ao grupo Executor, da aplicação (seção 6.12). Enquanto essa entrega não entra, a marca na conta cumpre esse papel. Estar no grupo, ou ter a marca, permite ver a fila e assumir. Não atribui a conta a um projeto. Quem edita e conclui um projeto em execução é o responsável que assumiu.
+- Estar no grupo Executor permite ver a fila e assumir (seção 6.12). O grupo é da aplicação e não atribui a conta a um projeto. Quem edita e conclui um projeto em execução é o responsável que assumiu.
 
 ## 9. Diretriz técnica
 
@@ -458,13 +456,13 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Modernidade nas ações | 0.15.0 | O clique responde no botão: carregando, documento salvo, gerando o arquivo. Efetivo nesta 0.11.0 |
 | Workflow: o autor prepara e envia | 0.12.0 | Preparação, execução e concluído. Projeto novo só nasce com a planilha lida. O autor salva, envia e acompanha sem valores nem arquivo. Efetivo nesta 0.12.0 |
 | Histórico e versões do preenchimento | 1.0.0 | Quem alterou cada campo, exclusão e reinclusão, lista de versões sem copiar o arquivo. O administrador restaura e inclui ou remove participante. Efetivo nesta 1.0.0 |
-| Workflow: assumir, concluir e baixar | 0.13.0 | Quem tem a marca de executor vê a fila e assume. Só o responsável edita e conclui. O autor baixa o arquivo final. A marca é o recorte até o grupo Executor. Efetivo nesta 1.1.0 |
+| Workflow: assumir, concluir e baixar | 0.13.0 | Quem tem a marca de executor vê a fila e assume. Só o responsável edita e conclui. O autor baixa o arquivo final. A marca foi o recorte até o grupo Executor. Efetivo nesta 1.1.0 |
 | Workflow: prévia, devolução e histórico | 0.14.0 | O responsável libera ou recolhe a prévia. O autor lê os valores e não baixa. Devolver pede motivo e tira o responsável. O histórico não copia o formulário. Efetivo nesta 1.2.0 |
+| Grupo Executor | 1.3.0 | Um grupo fixo da aplicação substitui a marca na conta. Quem está nele vê a fila e assume. O responsável continua sendo quem assumiu. |
 
 ### Ainda na fila
 
-1. Grupo Executor. Um grupo fixo da aplicação substitui a marca na conta. Quem está nele vê a fila e assume. O responsável do projeto continua sendo quem assumiu. Não há cadastro de outros grupos.
-2. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 

@@ -26,8 +26,8 @@ export default async function InicioPage({
   const recado = (await cookies()).get(COOKIE_RECADO)?.value === '1' && !usuario.ocultarBoasVindas
   const avisos = await searchParams
   const projetos = await listarProjetos(usuario)
-  const fila = usuario.executor ? await listarFilaExecucao() : []
-  const meus = usuario.executor ? await listarExecucaoDoResponsavel(usuario.id) : []
+  const fila = usuario.noGrupoExecutor ? await listarFilaExecucao() : []
+  const meus = usuario.noGrupoExecutor ? await listarExecucaoDoResponsavel(usuario.id) : []
 
   return (
     <div className="flex flex-col gap-8">
@@ -48,7 +48,7 @@ export default async function InicioPage({
       </CabecalhoPagina>
       {avisos.erro ? <Recado tom="erro">{avisos.erro}</Recado> : null}
       {avisos.ok ? <Recado tom="ok">{avisos.ok}</Recado> : null}
-      {usuario.executor ? <FilaExecucao fila={fila} meus={meus} /> : null}
+      {usuario.noGrupoExecutor ? <FilaExecucao fila={fila} meus={meus} /> : null}
       {projetos.length === 0 ? (
         <p className="rounded-2xl border bg-card px-5 py-10 text-sm text-muted-foreground shadow-sm">
           {usuario.papel === 'administrador'

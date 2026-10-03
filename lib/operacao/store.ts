@@ -50,11 +50,12 @@ export type Usuario = {
   sessaoGeracao: number
   origem: 'instalacao' | 'pedido'
   ocultarBoasVindas: boolean
-  /** Capacidade da conta. Nasce desligada. Não é um papel. */
-  executor: boolean
 }
 
-export type UsuarioPublico = Omit<Usuario, 'senhaHash'>
+export type UsuarioPublico = Omit<Usuario, 'senhaHash'> & {
+  /** Pertence ao grupo Executor, da aplicação. Nasce fora. Não é um papel. */
+  noGrupoExecutor: boolean
+}
 
 /** Usado só na validação da senha. Não enviar para páginas. */
 export type UsuarioLogin = {
@@ -98,11 +99,15 @@ export type LogRegistro = {
 
 type Store = {
   usuarios: Usuario[]
+  /** Contas do grupo Executor. A lista é a do grupo, não uma marca na conta. */
+  membrosExecutor: string[]
   pedidos: PedidoAcesso[]
   links: LinkAcesso[]
   estados: EntregaEstadoRow[]
   logs: LogRegistro[]
 }
+
+const GRUPO_EXECUTOR = 'executor'
 
 const ARQUIVO = path.join(process.cwd(), 'data', 'operacao.json')
 /** Teto temporário. A retenção definitiva fica para uma etapa posterior. */
@@ -131,7 +136,6 @@ async function semear(): Promise<Store> {
         sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
-        executor: false,
       },
       {
         id: 'instalacao-convidado',
@@ -149,9 +153,9 @@ async function semear(): Promise<Store> {
         sessaoGeracao: 0,
         origem: 'instalacao',
         ocultarBoasVindas: false,
-        executor: false,
       },
     ],
+    membrosExecutor: [],
     pedidos: [],
     links: [],
     estados: [],
@@ -161,9 +165,13 @@ async function semear(): Promise<Store> {
 
 function completar(store: Store): Store {
   if (!Array.isArray(store.links)) store.links = []
-  for (const usuario of store.usuarios) {
+  const legado = store.usuarios as (Usuario & { executor?: boolean })[]
+  if (!Array.isArray(store.membrosExecutor)) {
+    store.membrosExecutor = legado.filter((item) => item.executor === true).map((item) => item.id)
+  }
+  for (const usuario of legado) {
+    delete usuario.executor
     if (typeof usuario.ocultarBoasVindas !== 'boolean') usuario.ocultarBoasVindas = false
-    if (typeof usuario.executor !== 'boolean') usuario.executor = false
     const nomes = partirNome(usuario.nome)
     if (!usuario.primeiroNome) usuario.primeiroNome = nomes.primeiroNome
     if (usuario.sobrenome == null) usuario.sobrenome = nomes.sobrenome
@@ -174,6 +182,8 @@ function completar(store: Store): Store {
     if (usuario.ultimoAcessoEm === undefined) usuario.ultimoAcessoEm = null
     if (typeof usuario.sessaoGeracao !== 'number') usuario.sessaoGeracao = 0
   }
+  const ids = new Set(store.usuarios.map((item) => item.id))
+  store.membrosExecutor = [...new Set(store.membrosExecutor.filter((id) => ids.has(id)))]
   for (const pedido of store.pedidos) {
     const nomes = partirNome(pedido.nome)
     if (!pedido.primeiroNome) pedido.primeiroNome = nomes.primeiroNome
@@ -197,9 +207,9 @@ async function gravarDisco(store: Store) {
   await writeFile(ARQUIVO, JSON.stringify(store, null, 2), { mode: 0o600 })
 }
 
-export function publico(usuario: Usuario): UsuarioPublico {
+export function publico(usuario: Usuario, membros: readonly string[]): UsuarioPublico {
   const { senhaHash: _senha, ...resto } = usuario
-  return resto
+  return { ...resto, noGrupoExecutor: membros.includes(usuario.id) }
 }
 
 export type EntradaLog = Omit<LogRegistro, 'id' | 'em'> & { em?: string }
@@ -385,7 +395,7 @@ function situacaoDe(ativo: boolean, situacao: string | null | undefined): Situac
   return ativo ? 'ativa' : 'desativada'
 }
 
-function usuarioPublicoDe(item: UsuarioPublicoRow): UsuarioPublico {
+function usuarioPublicoDe(item: UsuarioPublicoRow, membros: ReadonlySet<string> | null): UsuarioPublico {
   const nomes = partirNome(item.nome)
   const situacao = situacaoDe(item.ativo, item.situacao)
   return {
@@ -403,7 +413,7 @@ function usuarioPublicoDe(item: UsuarioPublicoRow): UsuarioPublico {
     sessaoGeracao: typeof item.sessao_geracao === 'number' ? item.sessao_geracao : 0,
     origem: item.origem,
     ocultarBoasVindas: item.ocultar_boas_vindas === true,
-    executor: item.executor === true,
+    noGrupoExecutor: membros ? membros.has(item.id) : item.executor === true,
   }
 }
 
@@ -420,9 +430,25 @@ async function lerColunas<T>(tabela: string, colunas: string[], opcionais: strin
   }
 }
 
+const lerMembrosExecutorNuvem = cache(async (): Promise<ReadonlySet<string> | null> => {
+  try {
+    const linhas = await lerTabela<{ usuario_id: string }>(
+      'grupo_membros',
+      `select=usuario_id&grupo=eq.${GRUPO_EXECUTOR}`,
+    )
+    return new Set(linhas.map((item) => item.usuario_id))
+  } catch (erro) {
+    if (ehTabelaAusente(erro)) return null
+    throw erro
+  }
+})
+
 async function lerUsuariosPublicos(filtro: string) {
-  const linhas = await lerColunas<UsuarioPublicoRow>('usuarios', COLUNAS_USUARIO, OPCIONAIS_USUARIO, filtro)
-  return linhas.map(usuarioPublicoDe)
+  const [linhas, membros] = await Promise.all([
+    lerColunas<UsuarioPublicoRow>('usuarios', COLUNAS_USUARIO, OPCIONAIS_USUARIO, filtro),
+    lerMembrosExecutorNuvem(),
+  ])
+  return linhas.map((item) => usuarioPublicoDe(item, membros))
 }
 
 const COLUNAS_LOGIN = ['id', 'login', 'senha_hash', 'papel', 'ativo', 'situacao', 'sessao_geracao', 'ocultar_boas_vindas']
@@ -496,7 +522,7 @@ export async function buscarUsuarioPublicoPorId(id: string): Promise<UsuarioPubl
   if (!supabaseConfigurado()) {
     const store = await lerOperacaoLocal()
     const usuario = store.usuarios.find((item) => item.id === id)
-    return usuario ? publico(usuario) : null
+    return usuario ? publico(usuario, store.membrosExecutor) : null
   }
   const lista = await lerUsuariosPublicos(`id=eq.${id}&limit=1`)
   return lista[0] ?? null
@@ -505,7 +531,7 @@ export async function buscarUsuarioPublicoPorId(id: string): Promise<UsuarioPubl
 export async function listarUsuariosPublicos(): Promise<UsuarioPublico[]> {
   if (!supabaseConfigurado()) {
     const store = await lerOperacaoLocal()
-    return store.usuarios.map(publico)
+    return store.usuarios.map((item) => publico(item, store.membrosExecutor))
   }
   return lerUsuariosPublicos('order=login.asc')
 }
@@ -707,12 +733,13 @@ type LogRow = {
 }
 
 async function lerNuvem(): Promise<Store> {
-  const [usuarios, pedidos, estados, logs, links] = await Promise.all([
+  const [usuarios, pedidos, estados, logs, links, membros] = await Promise.all([
     lerTabela<UsuarioRow>('usuarios', 'select=*&order=login.asc'),
     lerTabela<PedidoRow>('pedidos_acesso', 'select=*&order=criado_em.asc'),
     lerTabela<EntregaEstadoRow>('entrega_estados', 'select=*'),
     lerTabela<LogRow>('logs', `select=*&order=em.desc&limit=${JANELA_REESCRITA_LOGS}`),
     lerLinks(),
+    lerMembrosExecutorNuvem(),
   ])
   if (usuarios.length === 0) {
     const vazio = await semear()
@@ -721,9 +748,13 @@ async function lerNuvem(): Promise<Store> {
   }
   return {
     usuarios: usuarios.map((item) => {
-      const publico = usuarioPublicoDe(item)
-      return { ...publico, senhaHash: item.senha_hash }
+      const publico = usuarioPublicoDe(item, membros)
+      const { noGrupoExecutor: _grupo, ...conta } = publico
+      return { ...conta, senhaHash: item.senha_hash }
     }),
+    membrosExecutor: membros
+      ? [...membros]
+      : usuarios.filter((item) => item.executor === true).map((item) => item.id),
     pedidos: pedidos.map(pedidoDe),
     links,
     estados,
@@ -745,7 +776,7 @@ async function gravarNuvem(store: Store) {
     throw new Error('A gravação foi recusada: ficaria sem administrador ativo.')
   }
   await gravarLinks(store.links)
-  await gravarUsuarios(store.usuarios)
+  await gravarUsuarios(store.usuarios, store.membrosExecutor)
   await apagarFora(
     'usuarios',
     'id',
@@ -794,7 +825,7 @@ async function gravarNuvem(store: Store) {
   )
 }
 
-async function gravarUsuarios(usuarios: Usuario[]) {
+async function gravarUsuarios(usuarios: Usuario[], membros: readonly string[]) {
   const linhas = usuarios.map((item) => ({
     id: item.id,
     nome: item.nome,
@@ -806,18 +837,36 @@ async function gravarUsuarios(usuarios: Usuario[]) {
     ativo: item.ativo,
     origem: item.origem,
     ocultar_boas_vindas: item.ocultarBoasVindas,
-    executor: item.executor,
   }))
-  let atuais: Record<string, unknown>[] = linhas
+  await escreverUsuarios(linhas, usuarios)
+  try {
+    await sincronizarGrupoExecutor(membros)
+  } catch (erro) {
+    if (!ehTabelaAusente(erro)) throw erro
+    await escreverUsuarios(
+      linhas.map((linha) => ({ ...linha, executor: membros.includes(String(linha.id)) })),
+      usuarios,
+      membros.length > 0,
+    )
+  }
+}
+
+async function escreverUsuarios(
+  linhas: Record<string, unknown>[],
+  usuarios: Usuario[],
+  exigeExecutor = false,
+) {
+  let atuais = linhas
   for (let tentativa = 0; tentativa < 4; tentativa++) {
     try {
       await gravarTabela('usuarios', atuais)
       return
     } catch (erro) {
       const falta = colunaQueFalta(erro)
-      if (falta !== 'ocultar_boas_vindas' && falta !== 'executor') throw erro
+      if (!falta) throw erro
       if (falta === 'ocultar_boas_vindas' && usuarios.some((item) => item.ocultarBoasVindas)) throw erro
-      if (falta === 'executor' && usuarios.some((item) => item.executor)) throw erro
+      if (falta === 'executor' && exigeExecutor) throw erro
+      if (falta !== 'ocultar_boas_vindas' && falta !== 'executor') throw erro
       atuais = atuais.map((linha) => {
         const copia = { ...linha }
         delete copia[falta]
@@ -826,6 +875,16 @@ async function gravarUsuarios(usuarios: Usuario[]) {
     }
   }
   throw new Error('Não foi possível gravar as contas.')
+}
+
+async function sincronizarGrupoExecutor(membros: readonly string[]) {
+  if (membros.length > 0) {
+    await gravarTabela(
+      'grupo_membros',
+      membros.map((id) => ({ grupo: GRUPO_EXECUTOR, usuario_id: id })),
+    )
+  }
+  await apagarFora('grupo_membros', 'usuario_id', [...membros])
 }
 
 async function lerLinks() {
@@ -1070,7 +1129,6 @@ function criarContaLocal(
     sessaoGeracao: 0,
     origem: 'pedido',
     ocultarBoasVindas: false,
-    executor: false,
   })
   return null
 }
@@ -1095,7 +1153,6 @@ async function criarContaNuvem(
       ativo: true,
       origem: 'pedido',
       ocultar_boas_vindas: false,
-      executor: false,
     })
   } catch (erro) {
     return traduzirUnico(erro, {
@@ -1114,7 +1171,7 @@ export async function atualizarConta(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
-    executor: boolean
+    noGrupoExecutor: boolean
   },
   ator: string,
 ) {
@@ -1128,7 +1185,7 @@ export async function atualizarConta(
     evento: 'USER_UPDATED',
     ator,
     mensagem: `${ator} alterou ${resultado.login}.`,
-    detalhe: { papel: entrada.papel, situacao: entrada.situacao, executor: entrada.executor },
+    detalhe: { papel: entrada.papel, situacao: entrada.situacao, grupoExecutor: entrada.noGrupoExecutor },
   })
   return null
 }
@@ -1142,7 +1199,7 @@ function atualizarContaLocal(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
-    executor: boolean
+    noGrupoExecutor: boolean
   },
 ) {
   const usuario = store.usuarios.find((item) => item.id === id)
@@ -1159,9 +1216,15 @@ function atualizarContaLocal(
   usuario.papel = entrada.papel
   usuario.situacao = entrada.situacao
   usuario.ativo = ativa
-  usuario.executor = entrada.executor
+  definirMembroLocal(store, id, entrada.noGrupoExecutor)
   if (!ativa) usuario.sessaoGeracao += 1
   return { erro: null, login: usuario.login }
+}
+
+function definirMembroLocal(store: Store, id: string, incluir: boolean) {
+  const tem = store.membrosExecutor.includes(id)
+  if (incluir && !tem) store.membrosExecutor.push(id)
+  if (!incluir && tem) store.membrosExecutor = store.membrosExecutor.filter((item) => item !== id)
 }
 
 async function atualizarContaNuvem(
@@ -1172,7 +1235,7 @@ async function atualizarContaNuvem(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
-    executor: boolean
+    noGrupoExecutor: boolean
   },
 ) {
   const usuario = await buscarUsuarioPublicoPorId(id)
@@ -1190,11 +1253,29 @@ async function atualizarContaNuvem(
     papel: entrada.papel,
     ativo: ativa,
     situacao: entrada.situacao,
-    executor: entrada.executor,
   }
   if (!ativa) corpo.sessao_geracao = usuario.sessaoGeracao + 1
   await gravarConta(id, corpo)
+  await definirMembroExecutorNuvem(id, entrada.noGrupoExecutor)
   return { erro: null, login: usuario.login }
+}
+
+async function definirMembroExecutorNuvem(id: string, incluir: boolean) {
+  try {
+    if (incluir) {
+      await gravarTabela('grupo_membros', [{ grupo: GRUPO_EXECUTOR, usuario_id: id }])
+      return
+    }
+    await apagarOnde('grupo_membros', `${filtro('grupo', 'eq', GRUPO_EXECUTOR)}&${filtro('usuario_id', 'eq', id)}`)
+  } catch (erro) {
+    if (!ehTabelaAusente(erro)) throw erro
+    const linhas = await atualizarOnde<{ id: string }>(
+      'usuarios',
+      `${filtro('id', 'eq', id)}&select=id`,
+      { executor: incluir },
+    )
+    if (linhas.length === 0) throw new Error('Usuário não encontrado.')
+  }
 }
 
 async function gravarConta(id: string, corpo: Record<string, unknown>) {
@@ -1280,6 +1361,7 @@ function excluirContaLocal(store: Store, id: string) {
     return { erro: 'O único administrador ativo não pode ser excluído.', login: '' }
   }
   store.usuarios = store.usuarios.filter((item) => item.id !== id)
+  definirMembroLocal(store, id, false)
   return { erro: null, login: usuario.login }
 }
 
@@ -1616,7 +1698,6 @@ async function confirmarContaLocal(entrada: { token: string; senha: string }) {
       sessaoGeracao: 0,
       origem: 'pedido',
       ocultarBoasVindas: false,
-      executor: false,
     })
     link.usadoEm = new Date().toISOString()
     return { erro: null, usuarioId, login, email: login, papel }
@@ -1655,7 +1736,6 @@ async function confirmarContaNuvem(entrada: { token: string; senha: string }) {
       sessao_geracao: 0,
       origem: 'pedido',
       ocultar_boas_vindas: false,
-      executor: false,
     })
   } catch (erro) {
     return {
