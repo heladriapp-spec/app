@@ -289,6 +289,20 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     areas: ['planilha', 'ui'],
   },
   {
+    id: 'grupo-executor',
+    nome: 'Grupo Executor',
+    resumo:
+      'Um grupo fixo da aplicação, Executor, independente do projeto. Incluir a conta nesse grupo substitui a marca. Quem está no grupo vê a fila e pode assumir. Assumir continua escolhendo o responsável daquele projeto. Não há cadastro de outros grupos.',
+    tipo: 'melhoria',
+    versaoPrevista: '1.3.0',
+    versaoEfetiva: null,
+    statusBase: 'planejado',
+    implantado: false,
+    ordemPrioridade: 73,
+    dependsOn: ['workflow-executor', 'contas-manuais'],
+    areas: ['auth', 'ui', 'banco'],
+  },
+  {
     id: 'versoes-planilha',
     nome: 'Histórico e versões do preenchimento',
     resumo:
@@ -308,7 +322,7 @@ export const CATALOGO_ENTREGAS: EntregaCatalogo[] = [
     resumo:
       'Outra planilha do SESC, para ver se aba, colunas e fórmulas se repetem. Até lá o Anexo III do Cosmo/Chão não vira modelo universal.',
     tipo: 'melhoria',
-    versaoPrevista: '1.1.0',
+    versaoPrevista: '1.4.0',
     versaoEfetiva: null,
     statusBase: 'planejado',
     implantado: false,
