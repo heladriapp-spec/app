@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A 1.1.0 deixa quem tem a marca de executor ver a fila, assumir, editar e concluir. O autor baixa o arquivo final só depois de concluído. A 1.2.0 libera ou recolhe a prévia: o autor lê os valores e não baixa. Devolver volta para preparação, pede o motivo e tira o responsável. O histórico lista quem enviou, assumiu, devolveu e concluiu, sem cópia do formulário. A 1.3.0 troca a marca na conta pelo grupo Executor, da aplicação. Quem está no grupo vê a fila e assume. O responsável do projeto continua sendo quem assumiu. A próxima da fila é um segundo trabalho do SESC, antes de generalizar o leitor. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A 1.1.0 deixa quem tem a marca de executor ver a fila, assumir, editar e concluir. O autor baixa o arquivo final só depois de concluído. A 1.2.0 libera ou recolhe a prévia: o autor lê os valores e não baixa. Devolver volta para preparação, pede o motivo e tira o responsável. O histórico lista quem enviou, assumiu, devolveu e concluiu, sem cópia do formulário. A 1.3.0 troca a marca na conta pelo grupo Executor, da aplicação. Quem está no grupo vê a fila e assume. O responsável do projeto continua sendo quem assumiu. A próxima da fila é a gestão de acessos, na 1.4.0: a página de gente deixa de se chamar Administração e passa a ter grupos, usuários e as diretivas Administrador e Acesso comum, na mesma entrega. O segundo trabalho do SESC vai para a 1.5.0, porque ainda espera outro arquivo. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -53,6 +53,8 @@ Dois modos.
 Quem ainda não tem conta pede acesso na página pública, com nome, e-mail e celular. Só o administrador vê esse pedido. A conta só existe depois que ele aprova e a pessoa confirma o e-mail, escolhendo usuário e senha. Conta confirmada por esse caminho nasce como usuário comum.
 
 O usuário comum existe para a emissão de lançamento. Por enquanto, só o administrador cria projeto e só ele apaga linha da planilha.
+
+Na 1.4.0 esse papel deixa de ser um campo editado na conta. Passa a ser a diretiva do grupo em que a conta está. O que cada perfil pode fazer permanece o desta tabela. O detalhe está na seção 6.13.
 
 A instalação já nasce com duas contas, sem pedido e sem e-mail:
 
@@ -123,6 +125,8 @@ Visível só para o administrador:
 - Incluir ou tirar a conta do grupo Executor. O grupo é fixo, da aplicação, e não é um papel. Conta nova nasce fora. Quem está no grupo vê a fila de execução e pode assumir um projeto. Não escolhe o responsável daquele projeto.
 
 Login é único. E-mail, quando existe, é único. E-mail que já pertence a uma conta, ou a um pedido ainda pendente, não abre outro pedido. As contas `adm` e `convidado` não têm e-mail e não entram nessa fila.
+
+Isto é o que a 1.3.0 mostra numa página só, com o nome Administração. A 1.4.0 troca esse nome para gestão de acessos e separa grupos, usuários e diretivas. E-mail e celular passam a ser obrigatórios na conta nova, e a conta nasce dentro de um grupo que já tem diretiva. A regra nova está na seção 6.13. Até essa entrega, criar conta ainda permite e-mail em branco e o papel continua no campo da conta.
 
 ### 6.3 Projetos
 
@@ -269,7 +273,53 @@ Participante continua sendo do projeto: define quem abre aquele trabalho. Papel 
 
 Na 1.3.0 a caixa da marca saiu. Incluir a conta no grupo é o único lugar dessa capacidade. Conta que já estava marcada entrou no grupo na mesma mudança. O comportamento da fila, de assumir, da prévia, da devolução, do histórico e do download permanece o da 1.1.0 e da 1.2.0.
 
-Não entra nesta entrega: criar, renomear ou apagar grupo; mais de um grupo; grupo por projeto; o grupo inteiro com permissão de editar o mesmo formulário.
+Não entrou na 1.3.0: criar, renomear ou apagar grupo; mais de um grupo de acesso; grupo por projeto; o grupo inteiro com permissão de editar o mesmo formulário. Criar grupo e associar a diretiva fica na 1.4.0 (seção 6.13). Grupo por projeto e o grupo inteiro editando o mesmo formulário continuam de fora.
+
+### 6.13 Gestão de acessos
+
+A 1.4.0 é uma entrega só. Grupo, diretiva, inclusão de membro e conta nova são a mesma operação: a conta nasce dentro de um grupo, e o grupo já carrega o que a conta pode fazer. Partir isso em quatro passos deixaria grupo sem regra, ou conta nova sem grupo.
+
+O nome Administração sai da página de gente. O menu passa a dizer **Gestão de acessos**. Implantações, Esteira, Logs e Saúde continuam na Operação, com o nome que já têm.
+
+Três entradas, nesta ordem:
+
+- **Grupos.** Lista, criar, abrir, incluir e tirar usuário, escolher a diretiva, excluir se estiver vazio.
+- **Usuários.** Pedidos de acesso, quem ainda não fez o primeiro acesso, histórico, lista, situação e reenvio do link de senha.
+- **Diretivas.** Administrador e Acesso comum, só leitura, com os grupos que usam cada uma.
+
+As diretivas nascem com a aplicação. Não se cria diretiva nova neste corte. Cada uma repete um perfil que já existe:
+
+| Diretiva | O que pode |
+| --- | --- |
+| Administrador | Tudo, inclusive a gestão de acessos |
+| Acesso comum | O usuário comum de hoje: lança nos projetos em que está. Não cria projeto, não apaga linha, não abre a gestão de acessos, não aprova acesso, não inclui nem tira participante |
+
+A diretiva fica no grupo. Não se marca de novo na conta. Uma conta pode estar em mais de um grupo. O que ela pode fazer é a união desses grupos. Se um deles for Administrador, ela tem acesso a tudo.
+
+Três grupos já existem quando a 1.4.0 entra:
+
+| Grupo | Diretiva | Quem já está | Pode apagar |
+| --- | --- | --- | --- |
+| Administradores | Administrador | `adm` | Não |
+| Acesso comum | Acesso comum | `convidado` | Não. O pedido aprovado nasce aqui |
+| Executor | nenhuma | quem já estava no grupo | Não |
+
+O Executor continua o da seção 6.12. Não recebe diretiva e não é um terceiro perfil. Ver a fila e assumir seguem iguais. Na criação da conta, o grupo de acesso é obrigatório. Entrar no Executor é outra escolha, à parte.
+
+Criar grupo pede o nome e exatamente uma das duas diretivas. Na página do grupo, um campo pesquisa os usuários que já existem. Cada linha inclui ou tira a pessoa. É o mesmo gesto das duas listas do Windows, numa página só.
+
+Grupo criado depois, com membro, não se apaga. Também não se apaga o último grupo com a diretiva Administrador, nem se tira dele o último administrador ativo. Os três grupos da tabela acima não se apagam. Quem está na própria conta não se exclui. As duas diretivas não se renomeiam.
+
+Na conta nova, e-mail e celular são obrigatórios. O e-mail é o canal do link de senha. O celular é contato. Não há reenvio por SMS.
+
+- Pedido de acesso: o e-mail continua sendo o login. Aprovar manda o link. A conta nasce no grupo Acesso comum e fora do Executor.
+- Criação na gestão: nome, sobrenome, e-mail, celular, login e um grupo que já tenha diretiva. O login pode ser diferente do e-mail. Quem administra não escolhe a senha. O link sai para o e-mail.
+
+As contas `adm` e `convidado` continuam sem e-mail e sem celular. Entram como hoje. O link de senha segue indisponível nelas até alguém preencher o e-mail.
+
+A checagem no servidor lê a diretiva dos grupos da conta. Esconder o menu não autoriza a rota. O campo de papel da conta deixa de ser o que a tela edita.
+
+Fica de fora desta entrega: diretiva criada à mão, matriz de permissões, o usuário comum passar a criar projeto, reenvio de senha por SMS, grupo por projeto, e o grupo Executor inteiro editando o mesmo formulário. Participante continua sendo do projeto.
 
 ## 7. Fidelidade do arquivo
 
@@ -462,11 +512,16 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 
 ### Ainda na fila
 
-1. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+A gestão de acessos vem antes do segundo arquivo. O segundo arquivo continua travado na seção 11, à espera de outra planilha do SESC. A gestão de acessos continua o grupo Executor que acabou de entrar e não depende desse arquivo.
+
+1. Gestão de acessos, na 1.4.0. Uma entrega só: grupos com diretiva, inclusão de usuário por pesquisa, e conta nova com e-mail, celular e grupo. Não se parte em tela, grupo, diretiva e formulário.
+2. Um segundo trabalho do SESC, na 1.5.0, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 
 - Motor de rateio para as colunas F e G. A seção 14 descreve a conta. Este corte não a executa. A pessoa preenche a cotação e a planilha do SESC.
+- Diretiva criada à mão, matriz de permissões, reenvio de senha por SMS, e o usuário comum passar a criar projeto.
+- Grupo por projeto, e o grupo Executor inteiro editando o mesmo formulário.
 - Gravar o `.xlsx` numa tabela do Postgres. O arquivo fica no Storage, ou na pasta local.
 - Container Docker. O desenvolvimento é o `pnpm dev`.
 - Leitura de PDF, planta e memorial, e o restante da visão de produto (cliente, fornecedor, cronograma e dashboard da obra).
