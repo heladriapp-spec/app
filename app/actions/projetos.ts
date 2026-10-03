@@ -2,6 +2,7 @@
 
 import { requireUser } from '@/lib/auth/guard'
 import { pode } from '@/lib/projetos/acesso'
+import { aplicarPreenchimento } from '@/lib/planilha/gravar'
 import { lerPlanilha } from '@/lib/planilha/ler'
 import { AVISO_PLANILHA_GRANDE, LIMITE_PLANILHA } from '@/lib/planilha/limite'
 import { dataHojeISO } from '@/lib/planilha/numeros'
@@ -14,6 +15,8 @@ import {
   ITEM_DE_VOLTA,
   PARTICIPANTE_INCLUIDO,
   PARTICIPANTE_REMOVIDO,
+  PROJETO_ASSUMIDO,
+  PROJETO_CONCLUIDO,
   PROJETO_ENVIADO,
   VERSAO_RESTAURADA,
 } from '@/lib/projetos/frases'
@@ -24,7 +27,9 @@ import {
   apagarProjeto,
   aplicarPlanilha,
   gravarArquivoDoProjeto,
+  gravarArquivoGerado,
   gravarProjeto,
+  lerArquivoDoProjeto,
   incluirParticipanteNoProjeto,
   inserirProjeto,
   planilhaDoProjeto,
@@ -218,22 +223,69 @@ export async function salvarPreenchimento(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   const projeto = await projetoPorId(id)
   if (!projeto || !pode(usuario, projeto, 'editar')) redirect('/')
-  const submeter = String(formData.get('acao') ?? '') === 'submeter'
+  const acao = String(formData.get('acao') ?? '')
+  const submeter = acao === 'submeter'
+  const concluir = acao === 'concluir'
   if (submeter && !pode(usuario, projeto, 'submeter')) {
-    voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
+    voltar(
+      `/projetos/${id}`,
+      projeto.arquivoNome ? 'Este projeto já foi enviado.' : 'Este projeto ainda não tem planilha.',
+    )
   }
+  if (concluir && !pode(usuario, projeto, 'concluir')) {
+    voltar(`/projetos/${id}`, 'Só o responsável conclui um projeto em execução.')
+  }
+  const modo = concluir ? 'concluir' : submeter ? 'submeter' : 'salvar'
   const lida = await planilhaDoProjeto(projeto)
   if (!lida) voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
 
   const rotulos = rotulosDaPlanilha(lida)
   if (lida.formato === 'cotacao' && lida.cotacao) {
-    await gravarCotacao(id, projeto, usuario.login, formData, lida.cotacao, submeter, rotulos)
+    await gravarCotacao(id, projeto, usuario.login, formData, lida.cotacao, modo, rotulos)
     return
   }
 
   const lido = lerLancamentosAnexo(formData, lida.linhas)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, projeto, usuario.login, lido.lancamentos, submeter, rotulos)
+  await gravarLancamentos(id, projeto, usuario.login, lido.lancamentos, modo, rotulos)
+}
+
+export async function assumirProjeto(formData: FormData) {
+  const usuario = await requireUser()
+  const id = String(formData.get('id') ?? '')
+  const destino = `/projetos/${id || ''}`
+  const projeto = await projetoPorId(id, { valores: false })
+  if (!projeto || !pode(usuario, projeto, 'assumir')) {
+    voltar(id ? destino : '/', 'Este projeto não está na fila.')
+  }
+  const agora = new Date().toISOString()
+  try {
+    await gravarProjeto(
+      id,
+      projeto.atualizadoEm,
+      {
+        responsavelId: usuario.id,
+        responsavelEm: agora,
+        atualizadoPor: usuario.login,
+      },
+      { status: 'em_execucao', semResponsavel: true },
+    )
+  } catch (erro) {
+    voltar(
+      destino,
+      erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada
+        ? erro.message
+        : 'Não foi possível assumir o projeto.',
+    )
+  }
+  await registrarEvento({
+    nivel: 'info',
+    evento: 'PROJECT_ASSUMED',
+    ator: usuario.login,
+    mensagem: `${usuario.login} assumiu “${projeto.nome}”.`,
+    detalhe: { projeto: id },
+  })
+  voltar(destino, PROJETO_ASSUMIDO, true)
 }
 
 async function gravarCotacao(
@@ -242,12 +294,12 @@ async function gravarCotacao(
   ator: string,
   formData: FormData,
   cotacao: CotacaoLida,
-  submeter: boolean,
+  modo: 'salvar' | 'submeter' | 'concluir',
   rotulos: Record<string, string>,
 ) {
   const lido = lerLancamentosCotacao(formData, cotacao)
   if (!lido.ok) voltar(`/projetos/${id}`, lido.erro)
-  await gravarLancamentos(id, projeto, ator, lido.lancamentos, submeter, rotulos)
+  await gravarLancamentos(id, projeto, ator, lido.lancamentos, modo, rotulos)
 }
 
 async function gravarLancamentos(
@@ -255,17 +307,33 @@ async function gravarLancamentos(
   antes: Projeto,
   ator: string,
   recebidos: Projeto['lancamentos'],
-  submeter: boolean,
+  modo: 'salvar' | 'submeter' | 'concluir',
   rotulos: Record<string, string>,
 ) {
   if (antes.status === 'concluido') {
     voltar(`/projetos/${id}`, 'Um projeto concluído não pode ser alterado.')
   }
-  if (antes.status !== 'em_edicao') {
+  if (modo === 'submeter' && antes.status !== 'em_edicao') {
+    voltar(`/projetos/${id}`, 'Este projeto já foi enviado.')
+  }
+  if (modo === 'concluir' && antes.status !== 'em_execucao') {
+    voltar(`/projetos/${id}`, 'Só o responsável conclui um projeto em execução.')
+  }
+  if (modo === 'salvar' && antes.status !== 'em_edicao' && antes.status !== 'em_execucao') {
     voltar(`/projetos/${id}`, 'Este projeto já foi enviado.')
   }
   const lancamentos = preservarExcluidos(antes.lancamentos, recebidos)
   const agora = new Date().toISOString()
+  const emExecucao = antes.status === 'em_execucao'
+  let arquivoGeradoNome: string | null = null
+  if (modo === 'concluir') {
+    if (!antes.arquivoNome) voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
+    const lida = await planilhaDoProjeto(antes)
+    if (!lida) voltar(`/projetos/${id}`, 'Este projeto ainda não tem planilha.')
+    arquivoGeradoNome = antes.arquivoNome
+    const gerado = aplicarPreenchimento(await lerArquivoDoProjeto(id), lida, lancamentos)
+    await gravarArquivoGerado(id, gerado)
+  }
   try {
     await gravarProjeto(
       id,
@@ -273,11 +341,20 @@ async function gravarLancamentos(
       {
         lancamentos,
         atualizadoPor: ator,
-        ...(submeter ? { status: 'em_execucao' as const, submetidoEm: agora } : {}),
+        ...(modo === 'submeter' ? { status: 'em_execucao' as const, submetidoEm: agora } : {}),
+        ...(modo === 'concluir'
+          ? {
+              status: 'concluido' as const,
+              arquivoGeradoNome,
+              concluidoEm: agora,
+              concluidoPor: ator,
+            }
+          : {}),
       },
-      { status: 'em_edicao' },
+      { status: emExecucao ? 'em_execucao' : 'em_edicao' },
     )
   } catch (erro) {
+    if (modo === 'concluir') await apagarArquivoGerado(id).catch(() => undefined)
     if (erro instanceof ProjetoDesatualizado || erro instanceof TransicaoRecusada) {
       voltar(`/projetos/${id}`, erro.message)
     }
@@ -293,9 +370,19 @@ async function gravarLancamentos(
     depois: lancamentos,
     rotulos,
   })
-  if (submeter) {
+  if (modo === 'submeter') {
     await registrarEventoProjeto({ projetoId: id, tipo: 'submetido', ator })
     voltar(`/projetos/${id}`, PROJETO_ENVIADO, true)
+  }
+  if (modo === 'concluir') {
+    await registrarEvento({
+      nivel: 'info',
+      evento: 'PROJECT_CONCLUDED',
+      ator,
+      mensagem: `${ator} concluiu “${antes.nome}”.`,
+      detalhe: { projeto: id },
+    })
+    voltar(`/projetos/${id}`, PROJETO_CONCLUIDO, true)
   }
   await registrarEvento({
     nivel: 'info',

@@ -200,7 +200,10 @@ export default async function AdministracaoPage({
                     <td className="px-3 py-2">{usuario.email ?? '—'}</td>
                     <td className="px-3 py-2">{usuario.celular ?? '—'}</td>
                     <td className="px-3 py-2">
-                      {usuario.papel === 'administrador' ? 'Administrador' : 'Usuário comum'}
+                      <span className="flex flex-wrap items-center gap-2">
+                        {usuario.papel === 'administrador' ? 'Administrador' : 'Usuário comum'}
+                        {usuario.executor ? <Badge>Executor</Badge> : null}
+                      </span>
                     </td>
                     <td className="px-3 py-2">
                       <Badge variant={usuario.situacao === 'ativa' ? 'secondary' : 'destructive'}>
@@ -262,6 +265,19 @@ export default async function AdministracaoPage({
                             <option value="desativada">Desativada</option>
                           </select>
                           {unico ? <input type="hidden" name="situacao" value="ativa" /> : null}
+                          <label className="flex items-center gap-2 text-sm" htmlFor={`executor-${usuario.id}`}>
+                            <input
+                              id={`executor-${usuario.id}`}
+                              type="checkbox"
+                              name="executor"
+                              value="sim"
+                              defaultChecked={usuario.executor}
+                            />
+                            Executor
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Vê a fila e pode assumir um projeto em execução.
+                          </p>
                           <Button type="submit" size="sm">
                             Gravar
                           </Button>

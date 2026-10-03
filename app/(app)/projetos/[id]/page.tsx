@@ -1,4 +1,4 @@
-import { carregarPlanilha } from '@/app/actions/projetos'
+import { assumirProjeto, carregarPlanilha } from '@/app/actions/projetos'
 import { FormPlanilha } from '@/components/form-planilha'
 import { CabecalhoPagina } from '@/components/cabecalho-pagina'
 import { CotacaoTela } from '@/components/cotacao-tela'
@@ -39,6 +39,7 @@ export default async function ProjetoPage({
   if (!pode(usuario, base, 'ver')) redirect('/')
 
   const verValores = pode(usuario, base, 'ver_valores')
+  const podeAssumir = pode(usuario, base, 'assumir')
   const projeto = verValores ? await projetoPorId(id) : base
   if (!projeto) notFound()
   const podeRemover = pode(usuario, projeto, 'excluir')
@@ -48,6 +49,8 @@ export default async function ProjetoPage({
   const podeGerir = pode(usuario, projeto, 'gerir_participantes')
   const lida = verValores ? await planilhaDoProjeto(projeto).catch(() => null) : null
   const baixarResultado = pode(usuario, projeto, 'baixar_gerado')
+  const baixarOrigem = pode(usuario, projeto, 'baixar_origem')
+  const etapa = projeto.status === 'em_execucao' ? 'execucao' : 'preparacao'
   const [versoes, entradas, contas] = await Promise.all([
     verHistorico ? listarVersoesVisiveis(id) : Promise.resolve([]),
     listarEntradasParticipante(id),
@@ -109,7 +112,9 @@ export default async function ProjetoPage({
       {avisos.ok && avisos.ok !== DOCUMENTO_SALVO ? <Recado tom="ok">{avisos.ok}</Recado> : null}
       {lida ? (
         <p className="text-sm text-muted-foreground">
-          Salvar guarda o trabalho e mantém o projeto em preparação. Se um campo mudou, entra uma versão.
+          {etapa === 'execucao'
+            ? 'Salvar guarda o trabalho e mantém o projeto em execução. Concluir gera o arquivo final. Antes disso, o download é recusado.'
+            : 'Salvar guarda o trabalho e mantém o projeto em preparação. Se um campo mudou, entra uma versão.'}
         </p>
       ) : null}
       <ParticipantesProjeto
@@ -128,6 +133,8 @@ export default async function ProjetoPage({
           iniciais={valoresDaCotacao(projeto, lida.cotacao)}
           salvo={avisos.ok === DOCUMENTO_SALVO}
           podeExcluir={podeExcluirItem}
+          etapa={etapa}
+          mostrarArquivo={baixarOrigem}
         />
       ) : lida ? (
         <div className="flex flex-col gap-3">
@@ -142,6 +149,8 @@ export default async function ProjetoPage({
             linhas={lida.linhas}
             salvo={avisos.ok === DOCUMENTO_SALVO}
             podeExcluir={podeExcluirItem}
+            etapa={etapa}
+            mostrarArquivo={baixarOrigem}
           />
         </div>
       ) : verValores ? (
@@ -166,11 +175,14 @@ export default async function ProjetoPage({
             <Button type="submit">Carregar planilha</Button>
           </FormPlanilha>
         </div>
+      ) : podeAssumir ? (
+        <Assumir id={projeto.id} />
       ) : (
         <Acompanhamento
           status={projeto.status}
           enviado={avisos.ok === PROJETO_ENVIADO}
           baixar={baixarResultado ? projeto.id : null}
+          temResponsavel={Boolean(projeto.responsavelId)}
         />
       )}
       {verHistorico ? (
@@ -180,21 +192,43 @@ export default async function ProjetoPage({
   )
 }
 
+function Assumir({ id }: { id: string }) {
+  return (
+    <div className="max-w-lg rounded-2xl border bg-card p-5 shadow-sm">
+      <h2 className="text-sm font-medium">Fila de execução</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Este projeto espera um responsável. Assumir deixa a edição e a conclusão com você. O download
+        continua recusado até concluir.
+      </p>
+      <form action={assumirProjeto} className="mt-4">
+        <input type="hidden" name="id" value={id} />
+        <Button type="submit">Assumir</Button>
+      </form>
+    </div>
+  )
+}
+
 function Acompanhamento({
   status,
   enviado,
   baixar,
+  temResponsavel,
 }: {
   status: 'em_edicao' | 'em_execucao' | 'concluido'
   enviado: boolean
   baixar: string | null
+  temResponsavel: boolean
 }) {
   const texto = enviado
     ? 'Seu projeto foi enviado para execução. Aguardando um responsável. O formulário e o arquivo não vêm nesta tela.'
     : status === 'concluido'
-      ? 'Este projeto está concluído. O preenchimento não pode mais ser alterado.'
+      ? baixar
+        ? 'Este projeto está concluído. Baixe o arquivo final.'
+        : 'Este projeto está concluído. O preenchimento não pode mais ser alterado.'
       : status === 'em_execucao'
-        ? 'Aguardando um responsável. O formulário e o arquivo não vêm nesta tela.'
+        ? temResponsavel
+          ? 'Um responsável assumiu o projeto. O formulário e o arquivo não vêm nesta tela.'
+          : 'Aguardando um responsável. O formulário e o arquivo não vêm nesta tela.'
         : 'Este projeto está em preparação com o autor.'
 
   return (

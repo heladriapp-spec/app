@@ -122,6 +122,12 @@ export class TransicaoRecusada extends Error {
   }
 }
 
+function mensagemTransicao(status: StatusProjeto) {
+  if (status === 'em_execucao') return 'Este projeto não está mais em execução.'
+  if (status === 'em_edicao') return 'Este projeto já foi enviado.'
+  return 'Este projeto não aceita esta alteração.'
+}
+
 export type PatchProjeto = Partial<
   Pick<
     Projeto,
@@ -247,6 +253,19 @@ export async function tirarParticipanteLocal(usuarioId: string) {
   })
 }
 
+/** No JSON local, a exclusão do usuário devolve o projeto à fila. No Supabase, a chave faz isso. */
+export async function tirarResponsavelLocal(usuarioId: string) {
+  if (supabaseConfigurado()) return
+  if (!idSeguro(usuarioId)) return
+  await alterarIndice((projetos) => {
+    for (const projeto of projetos) {
+      if (projeto.responsavelId !== usuarioId) continue
+      projeto.responsavelId = null
+      projeto.responsavelEm = null
+    }
+  })
+}
+
 export async function inserirProjeto(projeto: Projeto) {
   if (!idSeguro(projeto.id)) throw new Error('Identificador inválido.')
   const completo = completarProjeto(projeto)
@@ -281,7 +300,7 @@ export async function gravarProjeto(
   id: string,
   vistoEm: string,
   patch: PatchProjeto,
-  esperado?: { status?: StatusProjeto },
+  esperado?: { status?: StatusProjeto; semResponsavel?: boolean },
 ): Promise<string> {
   if (!idSeguro(id) || !vistoEm) throw new Error('Projeto não encontrado.')
   const agora = new Date().toISOString()
@@ -289,27 +308,39 @@ export async function gravarProjeto(
     return alterarIndice((projetos) => {
       const atual = projetos.find((item) => item.id === id)
       if (!atual) throw new Error('Projeto não encontrado.')
-      if (esperado?.status && atual.status !== esperado.status) throw new TransicaoRecusada()
+      conferirEsperado(atual.status, atual.responsavelId, esperado)
       if (atual.atualizadoEm !== vistoEm) throw new ProjetoDesatualizado()
       aplicarPatch(atual, patch, agora)
       return agora
     })
   }
   const filtroStatus = esperado?.status ? `&status=eq.${esperado.status}` : ''
+  const filtroResponsavel = esperado?.semResponsavel ? '&responsavel_id=is.null' : ''
   const linhas = await atualizarOnde<{ atualizado_em: string }>(
     'projetos',
-    `id=eq.${id}&atualizado_em=eq.${encodeURIComponent(vistoEm)}${filtroStatus}&select=atualizado_em`,
+    `id=eq.${id}&atualizado_em=eq.${encodeURIComponent(vistoEm)}${filtroStatus}${filtroResponsavel}&select=atualizado_em`,
     corpoDoPatch(id, patch, agora),
   )
   const gravado = linhas[0]?.atualizado_em
   if (gravado) return gravado
-  const existe = await lerTabela<{ id: string; status: string }>(
+  const existe = await lerTabela<{ id: string; status: string; responsavel_id: string | null }>(
     'projetos',
-    `select=id,status&id=eq.${id}&limit=1`,
+    `select=id,status,responsavel_id&id=eq.${id}&limit=1`,
   )
   if (existe.length === 0) throw new Error('Projeto não encontrado.')
-  if (esperado?.status && statusCanonico(existe[0].status) !== esperado.status) throw new TransicaoRecusada()
+  conferirEsperado(statusCanonico(existe[0].status), existe[0].responsavel_id, esperado)
   throw new ProjetoDesatualizado()
+}
+
+function conferirEsperado(
+  status: StatusProjeto,
+  responsavelId: string | null,
+  esperado?: { status?: StatusProjeto; semResponsavel?: boolean },
+) {
+  if (esperado?.status && status !== esperado.status) throw new TransicaoRecusada(mensagemTransicao(esperado.status))
+  if (esperado?.semResponsavel && responsavelId) {
+    throw new TransicaoRecusada('Este projeto já tem responsável.')
+  }
 }
 
 export async function apagarProjeto(id: string) {
@@ -364,6 +395,24 @@ function resumoDaLinha(
   }
 }
 
+export async function listarFilaExecucao(): Promise<ProjetoLista[]> {
+  return listarExecucao('status=eq.em_execucao&responsavel_id=is.null', (item) => !item.responsavelId)
+}
+
+export async function listarExecucaoDoResponsavel(usuarioId: string): Promise<ProjetoLista[]> {
+  if (!idSeguro(usuarioId)) return []
+  return listarExecucao(`status=eq.em_execucao&responsavel_id=eq.${usuarioId}`, (item) => item.responsavelId === usuarioId)
+}
+
+async function listarExecucao(filtro: string, local: (item: Projeto) => boolean): Promise<ProjetoLista[]> {
+  if (!supabaseConfigurado()) {
+    const projetos = await lerIndice()
+    return projetos.filter((item) => item.status === 'em_execucao' && local(item)).map(resumoDe)
+  }
+  const linhas = await lerTabela<ProjetoRow>('projetos', `select=${COLUNAS_LISTA}&${filtro}&order=atualizado_em.asc`)
+  return linhas.map(resumoDaLinha)
+}
+
 export async function listarProjetos(usuario: { id: string; papel: string }): Promise<ProjetoLista[]> {
   const administrador = usuario.papel === 'administrador'
   if (!supabaseConfigurado()) {
@@ -392,7 +441,7 @@ export async function listarProjetos(usuario: { id: string; papel: string }): Pr
   return linhas.map(resumoDaLinha)
 }
 
-const COLUNAS_ARQUIVO = 'id,criado_por,status,arquivo_nome,arquivo_gerado_nome'
+const COLUNAS_ARQUIVO = 'id,criado_por,status,arquivo_nome,arquivo_gerado_nome,responsavel_id'
 
 export async function projetoParaArquivo(id: string) {
   if (!idSeguro(id)) return null
@@ -406,10 +455,13 @@ export async function projetoParaArquivo(id: string) {
       participantes: projeto.participantes,
       arquivoNome: projeto.arquivoNome,
       arquivoGeradoNome: projeto.arquivoGeradoNome,
+      responsavelId: projeto.responsavelId,
     }
   }
   const [linhas, vinculos] = await Promise.all([
-    lerTabela<Pick<ProjetoRow, 'id' | 'criado_por' | 'status' | 'arquivo_nome' | 'arquivo_gerado_nome'>>(
+    lerTabela<
+      Pick<ProjetoRow, 'id' | 'criado_por' | 'status' | 'arquivo_nome' | 'arquivo_gerado_nome' | 'responsavel_id'>
+    >(
       'projetos',
       `select=${COLUNAS_ARQUIVO}&id=eq.${id}&limit=1`,
     ),
@@ -424,6 +476,7 @@ export async function projetoParaArquivo(id: string) {
     participantes: vinculos.map((vinculo) => vinculo.usuario_id),
     arquivoNome: item.arquivo_nome,
     arquivoGeradoNome: item.arquivo_gerado_nome,
+    responsavelId: item.responsavel_id ?? null,
   }
 }
 

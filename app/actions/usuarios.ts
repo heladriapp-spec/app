@@ -106,6 +106,7 @@ export async function configurarUsuario(formData: FormData) {
   const celular = String(formData.get('celular') ?? '').trim()
   const papel = String(formData.get('papel') ?? '') as Papel
   const situacao = String(formData.get('situacao') ?? '') as SituacaoConta
+  const executor = String(formData.get('executor') ?? '') === 'sim'
 
   if (primeiroNome.length < 2) voltar('O primeiro nome precisa de ao menos 2 caracteres.')
   if (papel !== 'administrador' && papel !== 'comum') voltar('Papel inválido.')
@@ -115,7 +116,7 @@ export async function configurarUsuario(formData: FormData) {
 
   const erro = await atualizarConta(
     id,
-    { primeiroNome, sobrenome, celular: celular || null, papel, situacao },
+    { primeiroNome, sobrenome, celular: celular || null, papel, situacao, executor },
     admin.login,
   )
 

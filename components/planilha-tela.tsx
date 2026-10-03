@@ -40,11 +40,15 @@ export function PlanilhaTela({
   linhas,
   salvo = false,
   podeExcluir = false,
+  etapa = 'preparacao',
+  mostrarArquivo = true,
 }: {
   projeto: Projeto
   linhas: LinhaPlanilha[]
   salvo?: boolean
   podeExcluir?: boolean
+  etapa?: 'preparacao' | 'execucao'
+  mostrarArquivo?: boolean
 }) {
   const capitulos = capitulosDe(linhas)
   const [valores, setValores] = useState(() => valoresIniciais(projeto, linhas))
@@ -91,7 +95,7 @@ export function PlanilhaTela({
     <form action={salvarPreenchimento} data-aviso="silencioso" className="flex flex-col gap-4">
       <input type="hidden" name="id" value={projeto.id} />
       <NotaArquivoReferencial
-        nome={projeto.arquivoNome}
+        nome={mostrarArquivo ? projeto.arquivoNome : null}
         projetoId={projeto.id}
       />
       <nav aria-label="Capítulos" className="flex flex-col gap-2">
@@ -159,7 +163,7 @@ export function PlanilhaTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} />
+                  <AcoesPreenchimento salvo={salvo} etapa={etapa} />
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

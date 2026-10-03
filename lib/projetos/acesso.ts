@@ -4,6 +4,7 @@ export type AtorProjeto = {
   id: string
   login: string
   papel: string
+  executor: boolean
 }
 
 export type AlvoProjeto = {
@@ -12,6 +13,7 @@ export type AlvoProjeto = {
   status: StatusProjeto
   arquivoNome: string | null
   arquivoGeradoNome: string | null
+  responsavelId: string | null
 }
 
 export type AcaoProjeto =
@@ -19,6 +21,8 @@ export type AcaoProjeto =
   | 'ver_valores'
   | 'editar'
   | 'submeter'
+  | 'assumir'
+  | 'concluir'
   | 'excluir'
   | 'baixar_origem'
   | 'baixar_gerado'
@@ -31,20 +35,38 @@ export function ehAutor(usuario: { login: string }, projeto: { criadoPor: string
   return projeto.criadoPor === usuario.login
 }
 
+function ehResponsavel(usuario: { id: string }, projeto: { responsavelId: string | null }) {
+  return projeto.responsavelId != null && projeto.responsavelId === usuario.id
+}
+
+function naFila(usuario: { executor: boolean }, projeto: AlvoProjeto) {
+  return usuario.executor && projeto.status === 'em_execucao' && !projeto.responsavelId
+}
+
 /** A regra fica aqui. Esconder o botão não autoriza a rota. */
 export function pode(usuario: AtorProjeto, projeto: AlvoProjeto, acao: AcaoProjeto) {
   const autor = ehAutor(usuario, projeto)
   const admin = usuario.papel === 'administrador'
-  const participa = admin || projeto.participantes.includes(usuario.id)
+  const responsavel = ehResponsavel(usuario, projeto)
+  const participa = admin || projeto.participantes.includes(usuario.id) || responsavel
+  const preenche =
+    (autor && projeto.status === 'em_edicao') || (responsavel && projeto.status === 'em_execucao')
 
-  if (acao === 'ver') return participa
+  if (acao === 'ver') return participa || naFila(usuario, projeto)
   if (acao === 'excluir') return projeto.status === 'em_edicao' && (autor || admin)
-  if (acao === 'editar') return autor && projeto.status === 'em_edicao'
+  if (acao === 'editar' || acao === 'ver_valores') return preenche
   if (acao === 'submeter') return autor && projeto.status === 'em_edicao' && Boolean(projeto.arquivoNome)
-  if (acao === 'ver_valores') return autor && projeto.status === 'em_edicao'
+  if (acao === 'assumir') return naFila(usuario, projeto)
+  if (acao === 'concluir') {
+    return responsavel && projeto.status === 'em_execucao' && Boolean(projeto.arquivoNome)
+  }
   if (acao === 'baixar_origem') return autor && projeto.status === 'em_edicao' && Boolean(projeto.arquivoNome)
   if (acao === 'baixar_gerado') {
-    return projeto.status === 'concluido' && Boolean(projeto.arquivoGeradoNome) && (autor || admin)
+    return (
+      projeto.status === 'concluido' &&
+      Boolean(projeto.arquivoGeradoNome) &&
+      (autor || admin || responsavel)
+    )
   }
   if (acao === 'ver_historico') return autor && projeto.status === 'em_edicao'
   if (acao === 'excluir_item' || acao === 'restaurar') return admin && autor && projeto.status === 'em_edicao'

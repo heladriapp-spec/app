@@ -73,6 +73,8 @@ export function CotacaoTela({
   iniciais,
   salvo = false,
   podeExcluir = false,
+  etapa = 'preparacao',
+  mostrarArquivo = true,
 }: {
   projetoId: string
   arquivoNome: string | null
@@ -80,6 +82,8 @@ export function CotacaoTela({
   iniciais: Valores
   salvo?: boolean
   podeExcluir?: boolean
+  etapa?: 'preparacao' | 'execucao'
+  mostrarArquivo?: boolean
 }) {
   const capitulos = montarCapitulos(cotacao)
   const [valores, setValores] = useState(iniciais)
@@ -137,7 +141,7 @@ export function CotacaoTela({
         onAbrir={ir}
         carregando={pendente ? indo : null}
         arquivo={
-          <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} />
+          mostrarArquivo ? <NotaArquivoReferencial nome={arquivoNome} projetoId={projetoId} /> : null
         }
       />
       <div className="flex flex-col gap-4">
@@ -213,7 +217,7 @@ export function CotacaoTela({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <AcoesPreenchimento salvo={salvo} />
+                  <AcoesPreenchimento salvo={salvo} etapa={etapa} />
                   {proximo ? (
                     <Button type="button" onClick={() => ir(proximo.id)}>
                       {pendente && indo === proximo.id ? 'Carregando' : proximo.nome}

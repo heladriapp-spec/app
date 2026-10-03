@@ -14,7 +14,7 @@ import type { EntregaEstadoRow } from '@/lib/entregas/tipos'
 import { nomeCompleto, partirNome } from '@/lib/auth/politica-senha'
 import { hashSenha } from '@/lib/auth/senha'
 import { cache } from 'react'
-import { tirarParticipanteLocal } from '@/lib/projetos/store'
+import { tirarParticipanteLocal, tirarResponsavelLocal } from '@/lib/projetos/store'
 import {
   apagarFora,
   apagarOnde,
@@ -1114,6 +1114,7 @@ export async function atualizarConta(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
+    executor: boolean
   },
   ator: string,
 ) {
@@ -1127,7 +1128,7 @@ export async function atualizarConta(
     evento: 'USER_UPDATED',
     ator,
     mensagem: `${ator} alterou ${resultado.login}.`,
-    detalhe: { papel: entrada.papel, situacao: entrada.situacao },
+    detalhe: { papel: entrada.papel, situacao: entrada.situacao, executor: entrada.executor },
   })
   return null
 }
@@ -1141,6 +1142,7 @@ function atualizarContaLocal(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
+    executor: boolean
   },
 ) {
   const usuario = store.usuarios.find((item) => item.id === id)
@@ -1157,6 +1159,7 @@ function atualizarContaLocal(
   usuario.papel = entrada.papel
   usuario.situacao = entrada.situacao
   usuario.ativo = ativa
+  usuario.executor = entrada.executor
   if (!ativa) usuario.sessaoGeracao += 1
   return { erro: null, login: usuario.login }
 }
@@ -1169,6 +1172,7 @@ async function atualizarContaNuvem(
     celular: string | null
     papel: Papel
     situacao: SituacaoConta
+    executor: boolean
   },
 ) {
   const usuario = await buscarUsuarioPublicoPorId(id)
@@ -1186,6 +1190,7 @@ async function atualizarContaNuvem(
     papel: entrada.papel,
     ativo: ativa,
     situacao: entrada.situacao,
+    executor: entrada.executor,
   }
   if (!ativa) corpo.sessao_geracao = usuario.sessaoGeracao + 1
   await gravarConta(id, corpo)
@@ -1253,7 +1258,10 @@ export async function excluirConta(id: string, ator: string) {
     ? await excluirContaNuvem(id)
     : await alterarLocal((store) => excluirContaLocal(store, id))
   if (resultado.erro || !resultado.login) return { erro: resultado.erro ?? 'Usuário não encontrado.', login: '' }
-  if (!supabaseConfigurado()) await tirarParticipanteLocal(id)
+  if (!supabaseConfigurado()) {
+    await tirarParticipanteLocal(id)
+    await tirarResponsavelLocal(id)
+  }
   await registrarEvento({
     nivel: 'info',
     evento: 'USER_DELETED',

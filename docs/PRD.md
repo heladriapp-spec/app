@@ -2,7 +2,7 @@
 
 Portal web para preencher planilhas de licitação do SESC e devolvê-las no mesmo arquivo.
 
-**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A próxima da fila continua o executor assumir, concluir e baixar. O rateio automático para as colunas F e G saiu do escopo.  
+**Status:** 0.9.0. O preenchimento abre por capítulos, no índice à esquerda. Capítulo com todos os valores fica verde; o que ainda falta fica laranja. Baixar devolve o mesmo arquivo, com os valores gravados nas células de entrada. No item de serviço, um extra interno compõe o preço na tela; a planilha exportada recebe só o valor final. A planilha de cotação deste trabalho também abre nessa tela. Git, Supabase e a publicação na Vercel já estão neste corte. Aprovar um pedido e esqueci a senha enviam link de uso único pelo remetente SMTP. Depois de entrar, o recado de boas-vindas traz o nome da conta. Botão que dispara ação mostra Processando e, ao terminar, Ação concluída. Alt+Esc e Sair encerram a sessão com o aviso. A publicação no ar segue em 0.6.0 até o próximo deploy. A 0.9.0 deixa a interface mais moderna e mais leve, com ícones onde o gesto já é claro. A 0.11.0 deixa o clique no próprio botão: carregando, documento salvo e arquivo gerado, sem cobrir a tela. A 0.12.0 troca o status do projeto: o autor prepara, salva sem mudar a etapa e envia para execução. A 1.0.0 guarda quem alterou cada campo, a exclusão e a reinclusão, e a lista de versões do estado, sem copiar o arquivo. O administrador inclui e remove participante. A 1.1.0 deixa quem tem a marca de executor ver a fila, assumir, editar e concluir. O autor baixa o arquivo final só depois de concluído. A próxima da fila é a prévia, a devolução e o histórico de quem enviou, assumiu, devolveu e concluiu. O rateio automático para as colunas F e G saiu do escopo.  
 **Escopo:** primeiro momento — só a dor da planilha  
 **Nome de trabalho:** Heladri (nome da pasta do projeto)
 
@@ -120,6 +120,7 @@ Visível só para o administrador:
 - Ver quem foi aprovado e ainda não fez o primeiro acesso. Reenviar a notificação de confirmação. O reenvio manda outro link e invalida o anterior. Sem o remetente configurado, o reenvio registra a tentativa e avisa que nada saiu: a mensagem não ficou retida em serviço nenhum.
 - Excluir usuário. Ele deixa de entrar. O histórico do que ele fez permanece. Quem está na própria conta não se exclui. O único administrador ativo não é excluído nem desativado.
 - Desativar usuário. Desativado não entra. Não apagar histórico do que ele fez. O `adm` da instalação não é desativado enquanto for o único administrador.
+- Marcar ou desmarcar a conta como executor. A marca nasce desligada e não é um papel. Quem tem a marca vê a fila de execução e pode assumir um projeto.
 
 Login é único. E-mail, quando existe, é único. E-mail que já pertence a uma conta, ou a um pedido ainda pendente, não abre outro pedido. As contas `adm` e `convidado` não têm e-mail e não entram nessa fila.
 
@@ -197,7 +198,7 @@ Cada um desses eventos gera uma versão numerada do estado da planilha (valores 
 
 A versão atual é a que o botão Concluir e baixar usa. Uma versão antiga pode ser consultada. Restaurar uma versão antiga é ação do administrador: o estado atual passa a ser o daquela versão, e a restauração entra no histórico como versão nova. O histórico anterior não é reescrito.
 
-Na 1.0.0 a versão guarda os campos preenchidos e as linhas fora, não o `.xlsx`. Salvar cria versão só quando algum campo mudou. Quem não vê os valores também não vê essa lista. Excluir, reincluir e restaurar ficam com o administrador que é o autor, com o projeto em preparação. Incluir e remover participante é do administrador, enquanto o projeto não está concluído. Quem preenche nesta etapa continua sendo o autor.
+Na 1.0.0 a versão guarda os campos preenchidos e as linhas fora, não o `.xlsx`. Salvar cria versão só quando algum campo mudou. Quem não vê os valores também não vê essa lista. Excluir, reincluir e restaurar ficam com o administrador que é o autor, com o projeto em preparação. Incluir e remover participante é do administrador, enquanto o projeto não está concluído. Na preparação, quem preenche é o autor. Na execução, quem preenche e conclui é o responsável. O autor baixa o arquivo final quando o projeto está concluído. Antes disso, o download é recusado.
 
 ### 6.8 Extra no item de serviço
 
@@ -442,12 +443,12 @@ O plano antigo punha Git, Supabase, e-mail e Vercel depois do corte local da pla
 | Modernidade nas ações | 0.15.0 | O clique responde no botão: carregando, documento salvo, gerando o arquivo. Efetivo nesta 0.11.0 |
 | Workflow: o autor prepara e envia | 0.12.0 | Preparação, execução e concluído. Projeto novo só nasce com a planilha lida. O autor salva, envia e acompanha sem valores nem arquivo. Efetivo nesta 0.12.0 |
 | Histórico e versões do preenchimento | 1.0.0 | Quem alterou cada campo, exclusão e reinclusão, lista de versões sem copiar o arquivo. O administrador restaura e inclui ou remove participante. Efetivo nesta 1.0.0 |
+| Workflow: assumir, concluir e baixar | 0.13.0 | Quem tem a marca de executor vê a fila e assume. Só o responsável edita e conclui. O autor baixa o arquivo final. Efetivo nesta 1.1.0 |
 
 ### Ainda na fila
 
-1. Workflow: assumir, concluir e baixar. Quem tem a marca de executor vê a fila e assume. O autor vê o resultado e baixa o arquivo final.
-2. Workflow: prévia, devolução e histórico de quem enviou, assumiu, devolveu e concluiu.
-3. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
+1. Workflow: prévia, devolução e histórico de quem enviou, assumiu, devolveu e concluiu.
+2. Um segundo trabalho do SESC, antes de generalizar as colunas do Anexo III. A cotação não conta como esse segundo arquivo: é outro formato, com leitor próprio.
 
 ### Fora deste escopo
 

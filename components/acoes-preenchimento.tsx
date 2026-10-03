@@ -1,12 +1,18 @@
 'use client'
 
-import { BotaoSalvar, BotaoSubmeter } from '@/components/botao-rascunho'
+import { BotaoConcluir, BotaoSalvar, BotaoSubmeter } from '@/components/botao-rascunho'
 
-export function AcoesPreenchimento({ salvo = false }: { salvo?: boolean }) {
+export function AcoesPreenchimento({
+  salvo = false,
+  etapa = 'preparacao',
+}: {
+  salvo?: boolean
+  etapa?: 'preparacao' | 'execucao'
+}) {
   return (
     <>
       <BotaoSalvar salvo={salvo} />
-      <BotaoSubmeter />
+      {etapa === 'execucao' ? <BotaoConcluir /> : <BotaoSubmeter />}
     </>
   )
 }

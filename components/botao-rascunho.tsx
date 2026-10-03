@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { DOCUMENTO_SALVO } from '@/lib/projetos/frases'
-import { Loader2, Save, Send } from 'lucide-react'
+import { CircleCheck, Loader2, Save, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 
@@ -53,6 +53,22 @@ export function BotaoSubmeter({ disabled = false }: { disabled?: boolean }) {
         <Send data-icon="inline-start" />
       )}
       {enviando ? 'Enviando projeto para execução' : 'Submeter para execução'}
+    </Button>
+  )
+}
+
+export function BotaoConcluir({ disabled = false }: { disabled?: boolean }) {
+  const { pending, data } = useFormStatus()
+  const enviando = pending && data?.get('acao') === 'concluir'
+
+  return (
+    <Button type="submit" name="acao" value="concluir" data-aviso="silencioso" disabled={disabled || pending}>
+      {enviando ? (
+        <Loader2 className="animate-spin" data-icon="inline-start" />
+      ) : (
+        <CircleCheck data-icon="inline-start" />
+      )}
+      {enviando ? 'Concluindo' : 'Concluir'}
     </Button>
   )
 }

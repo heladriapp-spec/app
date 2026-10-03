@@ -3,6 +3,10 @@ export const DOCUMENTO_SALVO = 'Documento salvo'
 
 export const PROJETO_ENVIADO = 'Projeto enviado para execução.'
 
+export const PROJETO_ASSUMIDO = 'Você assumiu este projeto.'
+
+export const PROJETO_CONCLUIDO = 'Projeto concluído. O arquivo final pode ser baixado.'
+
 export const ITEM_FORA = 'Item excluído deste trabalho.'
 
 export const ITEM_DE_VOLTA = 'Item reincluído.'
